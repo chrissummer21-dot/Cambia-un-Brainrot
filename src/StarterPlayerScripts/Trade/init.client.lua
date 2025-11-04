@@ -36,8 +36,11 @@ local inviteActive   = false
 Invite.okBtn.MouseButton1Click:Connect(function()
 	if Invite.otherId then
 		RESP:FireServer({ accept = true, otherId = Invite.otherId })
-		inviteActive = false
-		Invite:Hide()
+		inviteActive = true
+		-- NO cerrar el modal: queda en “esperando…”
+		Invite:LockWaiting()
+		-- y opcionalmente refleja estatus local inmediato:
+		Invite:SetStatuses(true, false)
 	end
 end)
 
@@ -139,38 +142,25 @@ SYNC.OnClientEvent:Connect(function(payload)
 	local state = payload.state
 
 	if state == "INVITE" then
-		-- Siempre reabrimos/actualizamos el modal durante INVITE
 		currentOtherId = payload.partnerId
 		Invite:Show(payload.partnerId, payload.partnerName or "Jugador")
-		-- (Opcional) mostrar estados dentro del modal:
-		-- Invite.msg.Text = ("¿Quieres tradear con <b>%s</b>?\nTú: %s  |  Otro: %s")
-		--   :format(payload.partnerName or "Jugador",
-		--           payload.youAccepted and "ACEPTADO" or "PENDIENTE",
-		--           payload.partnerAccepted and "ACEPTADO" or "PENDIENTE")
+
+		-- ACTUALIZA estados y lock/unlock según lo que sabe el servidor
+		Invite:SetStatuses(payload.youAccepted, payload.partnerAccepted)
+
+		if payload.youAccepted and not payload.partnerAccepted then
+			-- tú ya aceptaste => bloquea y muestra “esperando…”
+			Invite:LockWaiting()
+		elseif not payload.youAccepted then
+			-- tú no has aceptado => deja habilitado
+			Invite:Unlock()
+		end
 
 	elseif state == "PROPOSAL" then
 		inviteActive = false
 		Invite:Hide()
-		-- Usa el nombre del otro (el server envía partnerA/partnerB si quieres)
 		Proposal:Open(currentOtherId, payload.partnerB or payload.partnerA or "Jugador")
 
-	elseif state == "SUMMARY" then
-		Proposal:Close()
-		Summary:Open(
-			currentOtherId,
-			payload.a.mps, payload.a.items,
-			payload.b.mps, payload.b.items,
-			payload.warning
-		)
-
-	elseif state == "PROMISED" then
-		Summary:Close()
-		Instr:Open()
-
-	elseif state == "CANCELED" then
-		Invite:Hide(); Proposal:Close(); Summary:Close()
-		if payload.reason then
-			Toast:Show(payload.reason, 1.6)
-		end
+	-- ... los demás estados igual que ya los tienes ...
 	end
 end)

@@ -1,5 +1,5 @@
 local Players = game:GetService("Players")
-local Responsive = require(script.Responsive)
+local Responsive = require(script.Parent.Responsive)
 
 local Components = {}
 
