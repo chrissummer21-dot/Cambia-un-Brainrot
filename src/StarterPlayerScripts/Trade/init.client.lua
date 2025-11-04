@@ -5,14 +5,14 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
 -- Módulos locales
-local RemotesMod     = require(script.Parent.Remotes)
-local Components     = require(script.Parent.Components)
-local ToastClass     = require(script.Parent.Toast)
+local RemotesMod     = require(script.Remotes)
+local Components     = require(script.Components)
+local ToastClass     = require(script.Toast)
 
-local InviteScreen   = require(script.Parent.Screens.Invite)
-local ProposalScreen = require(script.Parent.Screens.Proposal)
-local SummaryScreen  = require(script.Parent.Screens.Summary)
-local InstrScreen    = require(script.Parent.Screens.Instructions)
+local InviteScreen   = require(script.Invite) -- Corregido
+local ProposalScreen = require(script.Proposal) -- Corregido
+local SummaryScreen  = require(script.Screens.Summary)
+local InstrScreen    = require(script.Screens.Instructions)
 
 -- ===== Remotos =====
 local R = RemotesMod.Get()

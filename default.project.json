@@ -10,10 +10,11 @@
       "TradeRemotes": { "$className": "Folder" }
     },
 
-    "ServerScriptService": {
-      "$className": "ServerScriptService",
-      "TradeServer": { "$path": "src/ServerScriptService/TradeServer.server.lua" }
-    },
+   "ServerScriptService": {
+  "$className": "ServerScriptService",
+  "TradeServer": { "$path": "src/ServerScriptService/TradeServer.server.lua" },
+  "Trade": { "$path": "src/ServerScriptService/Trade" }
+},
 
     "StarterPlayer": {
       "$className": "StarterPlayer",

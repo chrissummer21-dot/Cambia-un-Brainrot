@@ -1,4 +1,4 @@
-local Components = require(script.Parent.Parent.Components)
+local Components = require(script.Parent.Components)
 
 local Invite = {}
 Invite.__index = Invite

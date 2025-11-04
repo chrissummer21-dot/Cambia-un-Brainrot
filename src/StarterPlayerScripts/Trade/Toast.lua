@@ -1,4 +1,4 @@
-local Responsive = require(script.Parent.Responsive)
+local Responsive = require(script.Responsive)
 
 local Toast = {}
 Toast.__index = Toast

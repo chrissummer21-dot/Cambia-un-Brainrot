@@ -1,5 +1,4 @@
-local Components = require(script.Parent.Parent.Components)
-
+local Components = require(script.Parent.Components)
 local Proposal = {}
 Proposal.__index = Proposal
 
