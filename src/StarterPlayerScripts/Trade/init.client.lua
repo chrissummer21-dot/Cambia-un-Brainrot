@@ -9,8 +9,8 @@ local RemotesMod     = require(script.Remotes)
 local Components     = require(script.Components)
 local ToastClass     = require(script.Toast)
 
-local InviteScreen   = require(script.Invite) -- Corregido
-local ProposalScreen = require(script.Proposal) -- Corregido
+local InviteScreen   = require(script.Screens.Invite)
+local ProposalScreen = require(script.Screens.Proposal)
 local SummaryScreen  = require(script.Screens.Summary)
 local InstrScreen    = require(script.Screens.Instructions)
 
@@ -36,10 +36,7 @@ local inviteActive   = false
 Invite.okBtn.MouseButton1Click:Connect(function()
 	if Invite.otherId then
 		RESP:FireServer({ accept = true, otherId = Invite.otherId })
-		inviteActive = true
-		-- NO cerrar el modal: queda en “esperando…”
 		Invite:LockWaiting()
-		-- y opcionalmente refleja estatus local inmediato:
 		Invite:SetStatuses(true, false)
 	end
 end)
@@ -54,12 +51,18 @@ end)
 
 Proposal.sendBtn.MouseButton1Click:Connect(function()
 	if not Proposal.otherId then return end
-	local n = tonumber(Proposal.mps.Text or "0") or 0
+	-- Leer como ENTERO (sin multiplicar)
+	local units = tonumber(Proposal.units.Text or "0") or 0
+	units = math.max(0, math.floor(units))
+
 	SUBMIT:FireServer({
 		otherId = Proposal.otherId,
 		items   = Proposal.items.Text or "",
-		mps     = n
+		mps     = units
 	})
+
+	-- Cambiar interfaz a "Propuesta enviada..."
+	Proposal:SetWaiting()
 end)
 
 Proposal.cancelBtn.MouseButton1Click:Connect(function()
@@ -144,6 +147,19 @@ SYNC.OnClientEvent:Connect(function(payload)
 	if state == "INVITE" then
 		currentOtherId = payload.partnerId
 		Invite:Show(payload.partnerId, payload.partnerName or "Jugador")
+
+        Invite:SetStatuses(payload.youAccepted, payload.partnerAccepted)
+
+	-- Si el otro ya aceptó, muéstralo en la nota
+	if payload.partnerAccepted then
+		Invite:SetPartnerAcceptedNote(payload.partnerName or "El jugador")
+	end
+
+	if payload.youAccepted and not payload.partnerAccepted then
+		Invite:LockWaiting()
+	elseif not payload.youAccepted then
+		Invite:Unlock()
+	end
 
 		-- ACTUALIZA estados y lock/unlock según lo que sabe el servidor
 		Invite:SetStatuses(payload.youAccepted, payload.partnerAccepted)

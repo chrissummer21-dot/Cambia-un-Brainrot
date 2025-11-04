@@ -11,7 +11,7 @@ function Summary.new(parent)
 	title.Font = Enum.Font.GothamBold
 	title.Parent = modal
 
-	local a = Components.MakeLabel("Tú: ..."); a.Parent = modal
+	local a = Components.MakeLabel("Tú: ...");   a.Parent = modal
 	local b = Components.MakeLabel("Otro: ..."); b.Parent = modal
 
 	local warn = Components.MakeLabel("Advertencia...")
@@ -19,26 +19,26 @@ function Summary.new(parent)
 	warn.Parent = modal
 
 	local accept = Components.MakeButton("Aceptar resumen"); accept.Parent = modal
-	local back = Components.MakeButton("Cancelar"); back.Parent = modal
+	local back   = Components.MakeButton("Cancelar");        back.Parent   = modal
 
 	self.modal = modal
 	self.title = title
 	self.lineA = a
 	self.lineB = b
-	self.warn = warn
+	self.warn  = warn
 	self.acceptBtn = accept
-	self.backBtn = back
-	self.otherId = nil
+	self.backBtn   = back
+	self.otherId   = nil
 
 	return self
 end
 
-function Summary:Open(otherId, aMps, aItems, bMps, bItems, warning)
+function Summary:Open(otherId, aUnits, aItems, bUnits, bItems, warning)
 	self.otherId = otherId
 	self.title.Text = "Resumen del trade"
-	self.lineA.Text = ("Tú: %s MPS | %s"):format(tostring(aMps), aItems)
-	self.lineB.Text = ("Otro: %s MPS | %s"):format(tostring(bMps), bItems)
-	self.warn.Text = warning or ""
+	self.lineA.Text = ("Tú: %s | %s"):format(tostring(aUnits), aItems)
+	self.lineB.Text = ("Otro: %s | %s"):format(tostring(bUnits), bItems)
+	self.warn.Text  = warning or ""
 	self.modal.Visible = true
 end
 
