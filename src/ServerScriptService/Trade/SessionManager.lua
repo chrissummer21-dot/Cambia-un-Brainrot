@@ -6,11 +6,11 @@ local SYNC = RS:WaitForChild("TradeRemotes"):WaitForChild("SyncState")
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
-function SessionManager.new(zonePart, constants)
+function SessionManager.new(zonePart, constants, storage)
 	local self = setmetatable({}, SessionManager)
 	self.Zone = zonePart
 	self.Shared = constants
-
+    self.Storage = storage  
 	self.inZone = {}     -- [player] = true
 	self.sessions = {}   -- [key] = {a, b, state, inviteAccepted = {}, proposals = {}, summaryAccepted = {}}
 	self.engaged = {}    -- [player] = true si está en sesión viva
@@ -85,10 +85,10 @@ function SessionManager:_syncSummary(s)
 	})
 end
 
-function SessionManager:_syncPromised(s)
-	local payload = { state = "PROMISED" }
-	SYNC:FireClient(s.a, payload)
-	SYNC:FireClient(s.b, payload)
+function SessionManager:_syncPromised(s, proofCode)
+    local payload = { state = "PROMISED", proofCode = proofCode or s.proofCode }
+    SYNC:FireClient(s.a, payload)
+    SYNC:FireClient(s.b, payload)
 end
 
 function SessionManager:CreateSession(a, b)
@@ -158,29 +158,40 @@ function SessionManager:OnProposal(plr, other, items, mps)
 end
 
 function SessionManager:OnSummaryConfirm(plr, other, accept)
-	local k = keyFor(plr.UserId, other.UserId)
-	local s = self.sessions[k]
-	if not s or s.state ~= "SUMMARY" then return end
-	if not self:BothInZone(plr, other) then
-		self:CancelSession(s, "Alguien salió de la zona.")
-		return
-	end
+    local k = keyFor(plr.UserId, other.UserId)
+    local s = self.sessions[k]
+    if not s or s.state ~= "SUMMARY" then return end
+    if not self:BothInZone(plr, other) then
+        self:CancelSession(s, "Alguien salió de la zona.")
+        return
+    end
+    if not accept then
+        self:CancelSession(s, "Cancelado por un jugador.")
+        return
+    end
 
-	if not accept then
-		self:CancelSession(s, "Cancelado por un jugador.")
-		return
-	end
+    s.summaryAccepted[plr] = true
 
-	-- Idempotente: si ya había aceptado, no hace nada raro
-	s.summaryAccepted[plr] = true
+    if s.summaryAccepted[s.a] and s.summaryAccepted[s.b] then
+        s.state = "PROMISED"
 
-	if s.summaryAccepted[s.a] and s.summaryAccepted[s.b] then
-		s.state = "PROMISED"
-		self:_syncPromised(s)
-	else
-		-- 🔸 Nuevo: re-empuja SUMMARY con flags para mostrar "esperando..."
-		self:_syncSummary(s)
-	end
+        -- >>> CREA EL REGISTRO EN DATASTORE + WEBHOOKS <<<
+        local okRec, proof = nil, nil
+        if self.Storage then
+            local rec, err = self.Storage:CreatePromised(s.a, s.proposals[s.a], s.b, s.proposals[s.b])
+            if rec then
+                s.proofCode = rec.proofCode
+                proof = rec.proofCode
+            else
+                warn("CreatePromised failed: ", err)
+            end
+        end
+
+        -- sync PROMISED con proofCode (si lo obtuvimos)
+        self:_syncPromised(s, proof)
+    else
+        self:_syncSummary(s) -- re-sincroniza "esperando al otro"
+    end
 end
 
 function SessionManager:CancelSession(s, reason)

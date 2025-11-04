@@ -37,16 +37,18 @@ local function safeUpdate(ds, key, transform)
 end
 
 local function httpPost(url, payload)
-	if not url or url == "" then return true end
-	local body = HttpService:JSONEncode(payload)
-	for i = 1, Config.HTTP_MAX_RETRIES do
-		local ok, res = pcall(function()
-			return HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson, false)
-		end)
-		if ok then return true end
-		task.wait(0.5 * i)
-	end
-	return false
+    if not url or url == "" then return true end
+    local body = HttpService:JSONEncode(payload)
+    for i = 1, Config.HTTP_MAX_RETRIES do
+        local ok, res = pcall(function()
+            return HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson, false)
+        end)
+        if ok then return true end
+        warn(string.format(">>> HTTP POST falló (Intento %d/%d) para: %s | Error: %s", i, Config.HTTP_MAX_RETRIES, url, tostring(res)))
+        warn(("POST fail (%d/%d) to %s"):format(i, Config.HTTP_MAX_RETRIES, url))
+        task.wait(0.5 * i)
+    end
+    return false
 end
 
 -- Clase

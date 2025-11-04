@@ -192,8 +192,14 @@ SYNC.OnClientEvent:Connect(function(payload)
 	)
 
 	elseif state == "PROMISED" then
-		Summary:Close()
-		Instr:Open()
+    Summary:Close()
+    -- Si quieres mostrar el código en Instrucciones:
+    -- Instr:Open(proofCode) si tu pantalla lo soporta. O:
+    Instr:Open()
+    if payload.proofCode then
+        -- muestra un toast o agrégalo al label de instrucciones
+        -- Toast:Show("Proof: "..payload.proofCode, 2)
+    end
 
 	elseif state == "CANCELED" then
 		Invite:Hide(); Proposal:Close(); Summary:Close()

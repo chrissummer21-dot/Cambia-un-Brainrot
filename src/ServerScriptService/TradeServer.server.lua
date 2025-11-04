@@ -5,6 +5,8 @@ local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
+local SessionManager = require(script.Parent:WaitForChild("Trade").SessionManager)
+local SM = SessionManager.new(Zone, TradeShared, Storage)  -- << pasa Storage
 -- =========================
 -- Remotos (asegurar carpeta)
 -- =========================
