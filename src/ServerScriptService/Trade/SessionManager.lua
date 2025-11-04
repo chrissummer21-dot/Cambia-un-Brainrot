@@ -57,16 +57,32 @@ end
 
 function SessionManager:_syncSummary(s)
 	local sumA = s.proposals[s.a]; local sumB = s.proposals[s.b]
-	-- Aviso usando enteros (mínimo desde Shared)
 	local warning = ("Solo trades de mínimo %d unidad(es). Al confirmar, ambos se comprometen a cumplir."):format(self.Shared.MIN_UNITS)
-	local payload = {
+
+	local youA = s.summaryAccepted[s.a] == true
+	local youB = s.summaryAccepted[s.b] == true
+
+	-- payload para A
+	SYNC:FireClient(s.a, {
 		state = "SUMMARY",
-		a = { name = string.format("%s (@%s)", s.a.DisplayName, s.a.Name), items = sumA.items, mps = sumA.mps },
-		b = { name = string.format("%s (@%s)", s.b.DisplayName, s.b.Name), items = sumB.items, mps = sumB.mps },
-		warning = warning
-	}
-	SYNC:FireClient(s.a, payload)
-	SYNC:FireClient(s.b, payload)
+		a = { items = sumA.items, mps = sumA.mps },
+		b = { items = sumB.items, mps = sumB.mps },
+		warning = warning,
+		youAccepted = youA,
+		partnerAccepted = youB,
+		partnerName = string.format("%s (@%s)", s.b.DisplayName, s.b.Name),
+	})
+
+	-- payload para B
+	SYNC:FireClient(s.b, {
+		state = "SUMMARY",
+		a = { items = sumB.items, mps = sumB.mps }, -- invertido para B
+		b = { items = sumA.items, mps = sumA.mps },
+		warning = warning,
+		youAccepted = youB,
+		partnerAccepted = youA,
+		partnerName = string.format("%s (@%s)", s.a.DisplayName, s.a.Name),
+	})
 end
 
 function SessionManager:_syncPromised(s)
@@ -155,13 +171,15 @@ function SessionManager:OnSummaryConfirm(plr, other, accept)
 		return
 	end
 
+	-- Idempotente: si ya había aceptado, no hace nada raro
 	s.summaryAccepted[plr] = true
+
 	if s.summaryAccepted[s.a] and s.summaryAccepted[s.b] then
 		s.state = "PROMISED"
-		local rec = require(script.Parent.TradeStorage).new(self.Shared):CreatePromised(s.a, s.proposals[s.a], s.b, s.proposals[s.b])
 		self:_syncPromised(s)
 	else
-		-- puedes empujar un sync parcial si quieres
+		-- 🔸 Nuevo: re-empuja SUMMARY con flags para mostrar "esperando..."
+		self:_syncSummary(s)
 	end
 end
 

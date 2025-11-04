@@ -74,6 +74,8 @@ end)
 
 Summary.acceptBtn.MouseButton1Click:Connect(function()
 	if Summary.otherId then
+		-- bloquea inmediatamente para evitar clicks múltiples
+		Summary:LockWaiting()
 		CONFIRM:FireServer({ otherId = Summary.otherId, accept = true })
 	end
 end)
@@ -178,13 +180,16 @@ SYNC.OnClientEvent:Connect(function(payload)
 		Proposal:Open(currentOtherId, payload.partnerB or payload.partnerA or "Jugador")
 
         elseif state == "SUMMARY" then
-		Proposal:Close()
-		Summary:Open(
-			currentOtherId,
-			payload.a.mps, payload.a.items,
-			payload.b.mps, payload.b.items,
-			payload.warning
-		)
+	Proposal:Close()
+	Summary:Open(
+		currentOtherId,
+		payload.a.mps, payload.a.items,
+		payload.b.mps, payload.b.items,
+		payload.warning,
+		payload.youAccepted,
+		payload.partnerAccepted,
+		payload.partnerName
+	)
 
 	elseif state == "PROMISED" then
 		Summary:Close()
