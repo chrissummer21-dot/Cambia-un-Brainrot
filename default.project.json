@@ -7,7 +7,7 @@
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "TradeShared": { "$path": "src/ReplicatedStorage/TradeShared.lua" },
-      "TradeRemotes": { "$path": "src/ReplicatedStorage/TradeRemotes" }
+      "TradeRemotes": { "$className": "Folder" }
     },
 
     "ServerScriptService": {
@@ -19,13 +19,13 @@
       "$className": "StarterPlayer",
       "StarterPlayerScripts": {
         "$className": "StarterPlayerScripts",
-        "TradeClient": { "$path": "src/StarterPlayerScripts/TradeClient.client.lua" }
+        "Trade": { "$path": "src/StarterPlayerScripts/Trade" }
       }
     },
 
     "Workspace": {
-      "$className": "Workspace",
-      "TradeZone": { "$path": "src/Workspace/TradeZone.model.json" }
+      "$className": "Workspace"
+      
     }
   }
 }
