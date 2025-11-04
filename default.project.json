@@ -1,0 +1,31 @@
+{
+  "name": "TradeSystem",
+  "servePort": 34872,
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "TradeShared": { "$path": "src/ReplicatedStorage/TradeShared.lua" },
+      "TradeRemotes": { "$path": "src/ReplicatedStorage/TradeRemotes" }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "TradeServer": { "$path": "src/ServerScriptService/TradeServer.server.lua" }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "TradeClient": { "$path": "src/StarterPlayerScripts/TradeClient.client.lua" }
+      }
+    },
+
+    "Workspace": {
+      "$className": "Workspace",
+      "TradeZone": { "$path": "src/Workspace/TradeZone.model.json" }
+    }
+  }
+}

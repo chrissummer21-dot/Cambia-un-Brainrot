@@ -1,0 +1,11 @@
+﻿{
+  "ClassName": "Part",
+  "Name": "TradeZone",
+  "Properties": {
+    "Anchored": true,
+    "CanCollide": false,
+    "Transparency": 1,
+    "Size": [20, 1, 12],
+    "Color": [0, 1, 0]
+  }
+}
