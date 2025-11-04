@@ -52,7 +52,7 @@ end)
 Proposal.sendBtn.MouseButton1Click:Connect(function()
 	if not Proposal.otherId then return end
 	-- Leer como ENTERO (sin multiplicar)
-	local units = tonumber(Proposal.units.Text or "0") or 0
+	local units = tonumber(Proposal.mps.Text or "0") or 0
 	units = math.max(0, math.floor(units))
 
 	SUBMIT:FireServer({
@@ -176,6 +176,25 @@ SYNC.OnClientEvent:Connect(function(payload)
 		inviteActive = false
 		Invite:Hide()
 		Proposal:Open(currentOtherId, payload.partnerB or payload.partnerA or "Jugador")
+
+        elseif state == "SUMMARY" then
+		Proposal:Close()
+		Summary:Open(
+			currentOtherId,
+			payload.a.mps, payload.a.items,
+			payload.b.mps, payload.b.items,
+			payload.warning
+		)
+
+	elseif state == "PROMISED" then
+		Summary:Close()
+		Instr:Open()
+
+	elseif state == "CANCELED" then
+		Invite:Hide(); Proposal:Close(); Summary:Close()
+		if payload.reason then
+			Toast:Show(payload.reason, 1.6)
+		end
 
 	-- ... los demás estados igual que ya los tienes ...
 	end

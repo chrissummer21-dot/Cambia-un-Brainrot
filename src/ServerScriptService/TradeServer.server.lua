@@ -1,10 +1,13 @@
--- TradeServer.server.lua (autoridad + sync vía SessionManager)
--- Colocar en: ServerScriptService/TradeServer.server.lua
+-- ServerScriptService/TradeServer.server.lua
+-- Autoridad de sesiones + sync + persistencia + disputas
 
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
--- ==== Remotos: asegura carpeta y RemoteEvents ====
+-- =========================
+-- Remotos (asegurar carpeta)
+-- =========================
 local remotes = RS:FindFirstChild("TradeRemotes")
 if not remotes then
 	remotes = Instance.new("Folder")
@@ -12,64 +15,98 @@ if not remotes then
 	remotes.Parent = RS
 end
 
-local function ensure(name)
+local function ensure(name: string): RemoteEvent
 	local r = remotes:FindFirstChild(name)
 	if not r then
 		r = Instance.new("RemoteEvent")
 		r.Name = name
 		r.Parent = remotes
 	end
-	return r
+	return r :: RemoteEvent
 end
 
-local REQ     = ensure("RequestTrade")   -- Para notificaciones simples al cliente (toast)
-local RESP    = ensure("RespondTrade")   -- Aceptar / Rechazar invitación (auto-match)
-local SUBMIT  = ensure("SubmitProposal") -- Enviar propuesta
-local CONFIRM = ensure("ConfirmSummary") -- Confirmar resumen
-local CANCEL  = ensure("CancelTrade")    -- Cancelar flujo
-local SYNC    = ensure("SyncState")      -- << NUEVO: Sync autoritativo de UI
+local REQ      = ensure("RequestTrade")     -- notificaciones (toast)
+local RESP     = ensure("RespondTrade")     -- aceptar/rechazar INVITE
+local SUBMIT   = ensure("SubmitProposal")   -- enviar propuesta (enteros)
+local CONFIRM  = ensure("ConfirmSummary")   -- confirmar resumen
+local CANCEL   = ensure("CancelTrade")      -- cancelar flujo
+local SYNC     = ensure("SyncState")        -- sync UI autoritativo (server -> cliente)
+local SUB_DISP = ensure("SubmitDispute")    -- enviar disputa (prueba/video/razón)
 
--- ==== Shared y zona ====
+-- =========================
+-- Shared + zona
+-- =========================
 local TradeShared = require(RS:WaitForChild("TradeShared"))
 local Zone = workspace:FindFirstChild(TradeShared.ZONE_NAME)
 if not Zone then
 	warn("No existe Workspace." .. TradeShared.ZONE_NAME .. " — crea un Part con ese nombre (Anchored=true, CanTouch=true).")
 end
 
--- ==== SessionManager (autoridad de estado) ====
--- Estructura esperada:
---   ServerScriptService/
---     TradeServer.server.lua
---     Trade/
---       SessionManager.lua
+-- =========================
+-- Persistencia (TradeStorage)
+-- =========================
+-- Requiere:
+--   ServerScriptService/Trade/TradeStorage.lua
+--   ServerStorage/Trade/TradeConfig.lua
+local TradeStorage = require(script.Parent:WaitForChild("Trade").TradeStorage)
+local Storage = TradeStorage.new(TradeShared)
+
+-- Barrido al entrar (autocierra PROMISED vencidos a SUCCESS y suma puntos)
+Players.PlayerAdded:Connect(function(plr)
+	task.spawn(function()
+		Storage:SweepUserPendings(plr.UserId)
+	end)
+end)
+-- En Studio puede haber ya jugadores conectados
+for _, p in ipairs(Players:GetPlayers()) do
+	task.spawn(function()
+		Storage:SweepUserPendings(p.UserId)
+	end)
+end
+
+-- =========================
+-- SessionManager (autoridad de estado)
+-- =========================
+-- Requiere:
+--   ServerScriptService/Trade/SessionManager.lua
 local SessionManager = require(script.Parent:WaitForChild("Trade").SessionManager)
 local SM = SessionManager.new(Zone, TradeShared)
 
--- ==== Helpers ====
-local function playerFromTouchedPart(hit)
-	local model = hit and hit:FindFirstAncestorOfClass("Model")
-	return model and Players:GetPlayerFromCharacter(model) or nil
+-- =========================
+-- Utilidades
+-- =========================
+local function plrFromTouchedPart(hit: BasePart?)
+	if not hit then return nil end
+	local mdl = hit:FindFirstAncestorOfClass("Model")
+	return mdl and Players:GetPlayerFromCharacter(mdl) or nil
 end
 
--- ==== Hooks de zona ====
+local function notify(plr: Player, typ: string, msg: string)
+	REQ:FireClient(plr, { kind = "notify", type = typ or "info", message = msg or "" })
+end
+
+-- =========================
+-- Hooks de zona
+-- =========================
 if Zone then
 	Zone.Touched:Connect(function(hit)
-		local plr = playerFromTouchedPart(hit)
+		local plr = plrFromTouchedPart(hit)
 		if plr then SM:OnTouched(plr) end
 	end)
 
 	Zone.TouchEnded:Connect(function(hit)
-		local plr = playerFromTouchedPart(hit)
+		local plr = plrFromTouchedPart(hit)
 		if plr then SM:OnTouchEnded(plr) end
 	end)
 end
 
--- Limpieza al salir
 Players.PlayerRemoving:Connect(function(plr)
 	SM:OnLeaving(plr)
 end)
 
--- ==== Handlers de remotos (delegan en SM) ====
+-- =========================
+-- Handlers de remotos
+-- =========================
 
 -- 1) INVITE (auto-match): aceptar / rechazar
 RESP.OnServerEvent:Connect(function(plr, data)
@@ -82,7 +119,8 @@ RESP.OnServerEvent:Connect(function(plr, data)
 	SM:OnInviteResponse(plr, other, accept)
 end)
 
--- 2) PROPOSAL: validar y entregar a SM
+-- 2) PROPOSAL: validación + entregar a SM
+--    Nota: 'mps' representa "unidades enteras" en tu diseño actual.
 SUBMIT.OnServerEvent:Connect(function(plr, data)
 	if type(data) ~= "table" then return end
 	local otherId = tonumber(data.otherId or 0) or 0
@@ -90,17 +128,16 @@ SUBMIT.OnServerEvent:Connect(function(plr, data)
 	if not other then return end
 
 	local items = tostring(data.items or "")
-	local mps = tonumber(data.mps or 0) or 0
+	local units = tonumber(data.mps or 0) or 0
 
-	-- Validaciones compartidas
-	local ok, msg = TradeShared.validateProposal(items, mps)
+	local ok, msg = TradeShared.validateProposal(items, units)
 	if not ok then
-		REQ:FireClient(plr, { kind = "notify", type = "error", message = msg })
+		notify(plr, "error", msg)
 		return
 	end
 
 	items = TradeShared.sanitizeText(items)
-	SM:OnProposal(plr, other, items, mps)
+	SM:OnProposal(plr, other, items, units)
 end)
 
 -- 3) SUMMARY: confirmar / cancelar
@@ -114,11 +151,10 @@ CONFIRM.OnServerEvent:Connect(function(plr, data)
 	SM:OnSummaryConfirm(plr, other, accept)
 end)
 
--- 4) CANCEL manual (si agregas botón de cancelar en cliente)
+-- 4) CANCEL manual
 CANCEL.OnServerEvent:Connect(function(plr, otherId)
 	local other = Players:GetPlayerByUserId(tonumber(otherId or 0) or 0)
 	if not other then return end
-
 	for _, s in pairs(SM.sessions) do
 		if (s.a == plr and s.b == other) or (s.b == plr and s.a == other) then
 			SM:CancelSession(s, "Cancelado por un jugador.")
@@ -127,11 +163,36 @@ CANCEL.OnServerEvent:Connect(function(plr, otherId)
 	end
 end)
 
--- (Opcional) Helper para mandar notificaciones rápidas
-local function notify(plr, typ, msg)
-	REQ:FireClient(plr, { kind = "notify", type = typ or "info", message = msg or "" })
-end
+-- 5) DISPUTA (ticket con video/prueba/razón)
+SUB_DISP.OnServerEvent:Connect(function(plr, data)
+	if type(data) ~= "table" then return end
+	local proofCode = tostring(data.proofCode or "")
+	local videoUrl  = tostring(data.videoUrl or "")
+	local reason    = tostring(data.reason or "")
 
--- Listo: El SessionManager hará SYNC continuo con cada cambio de estado:
--- INVITE  -> PROPOSAL -> SUMMARY -> PROMISED
--- y forzará la UI correcta en ambos clientes.
+	if proofCode == "" then
+		return notify(plr, "error", "Falta proofCode.")
+	end
+
+	local ok = Storage:MarkDisputed(proofCode, plr.UserId, videoUrl, reason)
+	if ok then
+		notify(plr, "info", "Disputa enviada. Gracias.")
+	else
+		notify(plr, "error", "No se pudo registrar la disputa.")
+	end
+end)
+
+-- =========================
+-- Notas de integración de persistencia
+-- =========================
+-- Para registrar PROMISED en DataStore y espejos (Sheets/Discord),
+-- el momento correcto es cuando ambos confirman el resumen.
+-- Si ya integraste la llamada dentro del SessionManager (recomendado):
+--   self.Storage:CreatePromised(s.a, s.proposals[s.a], s.b, s.proposals[s.b])
+-- entonces no necesitas nada extra aquí.
+--
+-- Alternativa rápida (si NO editaste SessionManager):
+-- Puedes añadir un "callback" simple expuesto por SM cuando pase a PROMISED
+-- o mover la llamada de CreatePromised al punto donde tu SM hace _syncPromised.
+--
+-- El barrido de 48h se ejecuta cada que un jugador entra al juego (ver arriba).
