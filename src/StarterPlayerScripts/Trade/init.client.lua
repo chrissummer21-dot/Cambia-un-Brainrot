@@ -13,6 +13,7 @@ local InviteScreen   = require(script.Screens.Invite)
 local ProposalScreen = require(script.Screens.Proposal)
 local SummaryScreen  = require(script.Screens.Summary)
 local InstrScreen    = require(script.Screens.Instructions)
+local LoadingScreen  = require(script.Screens.Loading) -- << [NUEVO]
 
 -- ===== Remotos =====
 local R = RemotesMod.Get()
@@ -27,6 +28,7 @@ local Invite   = InviteScreen.new(gui)
 local Proposal = ProposalScreen.new(gui)
 local Summary  = SummaryScreen.new(gui)
 local Instr    = InstrScreen.new(gui)
+local Loading  = LoadingScreen.new(gui) -- << [NUEVO]
 
 -- ===== Estado local =====
 local currentOtherId = nil
@@ -72,13 +74,20 @@ Proposal.cancelBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- ===================================================
+-- Click de Aceptar Resumen MODIFICADO
+-- ===================================================
 Summary.acceptBtn.MouseButton1Click:Connect(function()
 	if Summary.otherId then
-		-- bloquea inmediatamente para evitar clicks múltiples
-		Summary:LockWaiting()
+		-- 1. Oculta el resumen
+		Summary:Close()
+		-- 2. Muestra la pantalla de carga
+		Loading:Show("Confirmando trade...\nEsperando al servidor.")
+		-- 3. Envía la confirmación al servidor
 		CONFIRM:FireServer({ otherId = Summary.otherId, accept = true })
 	end
 end)
+-- ===================================================
 
 Summary.backBtn.MouseButton1Click:Connect(function()
 	if Summary.otherId then
@@ -101,6 +110,7 @@ REQ.OnClientEvent:Connect(function(payload)
 end)
 
 -- ===== Eventos “legacy” (por compatibilidad si el server los emite) =====
+-- (Se mantienen por si acaso, pero el flujo principal usa SYNC)
 RESP.OnClientEvent:Connect(function(payload)
 	if type(payload) ~= "table" then return end
 	if payload.kind == "invite" then
@@ -135,6 +145,8 @@ CONFIRM.OnClientEvent:Connect(function(payload)
 	elseif payload.kind == "peerConfirmed" then
 		Toast:Show("El otro jugador confirmó el resumen.", 1.4)
 	elseif payload.kind == "promised" then
+		-- Este es el flujo "legacy", el nuevo flujo usa SYNC
+		Loading:Hide()
 		Summary:Close()
 		Instr:Open()
 	end
@@ -152,16 +164,10 @@ SYNC.OnClientEvent:Connect(function(payload)
 
         Invite:SetStatuses(payload.youAccepted, payload.partnerAccepted)
 
-	-- Si el otro ya aceptó, muéstralo en la nota
-	if payload.partnerAccepted then
-		Invite:SetPartnerAcceptedNote(payload.partnerName or "El jugador")
-	end
-
-	if payload.youAccepted and not payload.partnerAccepted then
-		Invite:LockWaiting()
-	elseif not payload.youAccepted then
-		Invite:Unlock()
-	end
+		-- Si el otro ya aceptó, muéstralo en la nota
+		if payload.partnerAccepted then
+			Invite:SetPartnerAcceptedNote(payload.partnerName or "El jugador")
+		end
 
 		-- ACTUALIZA estados y lock/unlock según lo que sabe el servidor
 		Invite:SetStatuses(payload.youAccepted, payload.partnerAccepted)
@@ -179,34 +185,43 @@ SYNC.OnClientEvent:Connect(function(payload)
 		Invite:Hide()
 		Proposal:Open(currentOtherId, payload.partnerB or payload.partnerA or "Jugador")
 
-        elseif state == "SUMMARY" then
-	Proposal:Close()
-	Summary:Open(
-		currentOtherId,
-		payload.a.mps, payload.a.items,
-		payload.b.mps, payload.b.items,
-		payload.warning,
-		payload.youAccepted,
-		payload.partnerAccepted,
-		payload.partnerName
-	)
-
+   elseif state == "SUMMARY" then
+    Loading:Hide() -- << [ARREGLO] Oculta la carga
+    Proposal:Close()
+    Summary:Open(
+        currentOtherId,
+        payload.a.mps, payload.a.items,
+        payload.b.mps, payload.b.items,
+        payload.warning,
+        payload.youAccepted,
+        payload.partnerAccepted,
+        payload.partnerName
+    )
+	-- ===================================================
+	-- Estado PROMISED MODIFICADO
+	-- ===================================================
 	elseif state == "PROMISED" then
-    Summary:Close()
-    -- Si quieres mostrar el código en Instrucciones:
-    -- Instr:Open(proofCode) si tu pantalla lo soporta. O:
-    Instr:Open()
-    if payload.proofCode then
-        -- muestra un toast o agrégalo al label de instrucciones
-        -- Toast:Show("Proof: "..payload.proofCode, 2)
-    end
+		Loading:Hide() -- Oculta la pantalla de carga
+		Summary:Close()
+		
+		Instr:Open() -- Muestra las instrucciones
+		
+		if payload.proofCode then
+			-- Muestra un toast con el código
+			Toast:Show("Trade confirmado! Proof: "..payload.proofCode, 3)
+		end
+	-- ===================================================
 
+	-- ===================================================
+	-- Estado CANCELED MODIFICADO
+	-- ===================================================
 	elseif state == "CANCELED" then
-		Invite:Hide(); Proposal:Close(); Summary:Close()
+		-- Asegúrate de ocultar todas las pantallas
+		Invite:Hide(); Proposal:Close(); Summary:Close(); Loading:Hide()
+		
 		if payload.reason then
 			Toast:Show(payload.reason, 1.6)
 		end
-
-	-- ... los demás estados igual que ya los tienes ...
+	-- ===================================================
 	end
 end)

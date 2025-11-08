@@ -5,9 +5,7 @@ local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
-local SessionManager = require(script.Parent:WaitForChild("Trade").SessionManager)
-local SM = SessionManager.new(Zone, TradeShared, Storage)  -- << pasa Storage
--- =========================
+
 -- Remotos (asegurar carpeta)
 -- =========================
 local remotes = RS:FindFirstChild("TradeRemotes")
@@ -72,8 +70,7 @@ end
 -- Requiere:
 --   ServerScriptService/Trade/SessionManager.lua
 local SessionManager = require(script.Parent:WaitForChild("Trade").SessionManager)
-local SM = SessionManager.new(Zone, TradeShared)
-
+local SM = SessionManager.new(Zone, TradeShared, Storage) -- << [ARREGLADO]
 -- =========================
 -- Utilidades
 -- =========================
