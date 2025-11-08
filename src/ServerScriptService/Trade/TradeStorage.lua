@@ -104,16 +104,23 @@ function TradeStorage:CreatePromised(aPlr, aProp, bPlr, bProp)
 	addToUser(aPlr.UserId); addToUser(bPlr.UserId)
 
 	-- Espejo HTTP (Sheets o Discord)
-	httpPost(Config.SHEETS_WEBAPP_URL, record)
-	httpPost(Config.DISCORD_WEBHOOK_URL, {
-		username = "TradeBot",
-		embeds = {{
-			title = "Nuevo trade PROMISED",
-			description = ("**%s** ↔ **%s**\nItems A: %s\nItems B: %s\nUnits A: %d | Units B: %d\nProof: `%s`\nCierra en: <t:%d:R>"):
-				format(record.aName, record.bName, record.aItems, record.bItems, record.aUnits, record.bUnits, record.proofCode, record.expiresAt),
-			color = 0x55cc88
-		}}
-	})
+	-- >>> [ARREGLO] Correr en hilos separados para no bloquear
+	task.spawn(function()
+		httpPost(Config.SHEETS_WEBAPP_URL, record)
+	end)
+	
+	task.spawn(function()
+		httpPost(Config.DISCORD_WEBHOOK_URL, {
+			username = "TradeBot",
+			embeds = {{
+				title = "Nuevo trade PROMISED",
+				description = ("**%s** ↔ **%s**\nItems A: %s\nItems B: %s\nUnits A: %d | Units B: %d\nProof: `%s`\nCierra en: <t:%d:R>"):
+					format(record.aName, record.bName, record.aItems, record.bItems, record.aUnits, record.bUnits, record.proofCode, record.expiresAt),
+				color = 0x55cc88
+			}}
+		})
+	end)
+    -- >>> [FIN DEL ARREGLO]
 
 	return record
 end
