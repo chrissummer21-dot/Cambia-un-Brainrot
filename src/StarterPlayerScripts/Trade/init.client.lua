@@ -78,13 +78,16 @@ end)
 -- Click de Aceptar Resumen MODIFICADO
 -- ===================================================
 Summary.acceptBtn.MouseButton1Click:Connect(function()
-	if Summary.otherId then
+	-- [ARREGLO] Lee el otherId ANTES de que Summary:Close() lo borre
+	local otherId = Summary.otherId 
+	
+	if otherId then
 		-- 1. Oculta el resumen
 		Summary:Close()
 		-- 2. Muestra la pantalla de carga
 		Loading:Show("Confirmando trade...\nEsperando al servidor.")
-		-- 3. Envía la confirmación al servidor
-		CONFIRM:FireServer({ otherId = Summary.otherId, accept = true })
+		-- 3. Envía la confirmación al servidor con el ID guardado
+		CONFIRM:FireServer({ otherId = otherId, accept = true })
 	end
 end)
 -- ===================================================
