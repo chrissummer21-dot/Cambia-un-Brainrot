@@ -13,7 +13,7 @@ local InviteScreen   = require(script.Screens.Invite)
 local ProposalScreen = require(script.Screens.Proposal)
 local SummaryScreen  = require(script.Screens.Summary)
 local InstrScreen    = require(script.Screens.Instructions)
-local LoadingScreen  = require(script.Screens.Loading) -- << [NUEVO]
+local LoadingScreen  = require(script.Screens.Loading)
 
 -- ===== Remotos =====
 local R = RemotesMod.Get()
@@ -28,7 +28,7 @@ local Invite   = InviteScreen.new(gui)
 local Proposal = ProposalScreen.new(gui)
 local Summary  = SummaryScreen.new(gui)
 local Instr    = InstrScreen.new(gui)
-local Loading  = LoadingScreen.new(gui) -- << [NUEVO]
+local Loading  = LoadingScreen.new(gui)
 
 -- ===== Estado local =====
 local currentOtherId = nil
@@ -75,17 +75,19 @@ Proposal.cancelBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ===================================================
--- Click de Aceptar Resumen MODIFICADO
+-- Click de Aceptar Resumen MODIFICADO (¡ARREGLADO!)
 -- ===================================================
 Summary.acceptBtn.MouseButton1Click:Connect(function()
-	-- [ARREGLO] Lee el otherId ANTES de que Summary:Close() lo borre
+	-- Lee el otherId ANTES de que cualquier función lo borre
 	local otherId = Summary.otherId 
 	
 	if otherId then
-		-- 1. Oculta el resumen
-		Summary:Close()
-		-- 2. Muestra la pantalla de carga
-		Loading:Show("Confirmando trade...\nEsperando al servidor.")
+		-- 1. Deshabilita el botón localmente para evitar doble clic
+		Summary:LockWaiting()
+		
+		-- 2. Ya NO cerramos el resumen ni mostramos la carga aquí.
+		--    El servidor nos dirá cuándo hacerlo (con SYNC).
+
 		-- 3. Envía la confirmación al servidor con el ID guardado
 		CONFIRM:FireServer({ otherId = otherId, accept = true })
 	end
@@ -156,7 +158,7 @@ CONFIRM.OnClientEvent:Connect(function(payload)
 end)
 
 -- ===== Sync autoritativo del servidor =====
--- El servidor envía { state = "INVITE"/"PROPOSAL"/"SUMMARY"/"PROMISED"/"CANCELED", ... }
+-- El servidor envía { state = "INVITE"/"PROPOSAL"/"SUMMARY"/"LOADING"/"PROMISED"/"CANCELED", ... }
 SYNC.OnClientEvent:Connect(function(payload)
 	if not payload or type(payload) ~= "table" then return end
 	local state = payload.state
@@ -200,6 +202,18 @@ SYNC.OnClientEvent:Connect(function(payload)
         payload.partnerAccepted,
         payload.partnerName
     )
+	
+	-- ===================================================
+	-- ¡NUEVO ESTADO DE CARGA SINCRONIZADO!
+	-- ===================================================
+	elseif state == "LOADING" then
+		-- Asegúrate de ocultar todas las pantallas anteriores
+		Invite:Hide()
+		Proposal:Close()
+		Summary:Close()
+		-- Muestra la carga
+		Loading:Show("Confirmando trade...\nEsperando al servidor.")
+
 	-- ===================================================
 	-- Estado PROMISED MODIFICADO
 	-- ===================================================

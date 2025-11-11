@@ -85,6 +85,12 @@ function SessionManager:_syncSummary(s)
 	})
 end
 
+function SessionManager:_syncLoading(s)
+    local payload = { state = "LOADING" }
+    SYNC:FireClient(s.a, payload)
+    SYNC:FireClient(s.b, payload)
+end
+
 function SessionManager:_syncPromised(s, proofCode)
     local payload = { state = "PROMISED", proofCode = proofCode or s.proofCode }
     SYNC:FireClient(s.a, payload)
@@ -173,9 +179,15 @@ function SessionManager:OnSummaryConfirm(plr, other, accept)
     s.summaryAccepted[plr] = true
 
     if s.summaryAccepted[s.a] and s.summaryAccepted[s.b] then
-        s.state = "PROMISED"
+        -- [CAMBIO 1] Ambos aceptaron. Manda "LOADING" a los dos.
+        s.state = "LOADING"
+        self:_syncLoading(s)
+
+        -- Da un respiro para que el remoto llegue a los clientes
+        task.wait(0.2) 
 
         -- >>> CREA EL REGISTRO EN DATASTORE + WEBHOOKS <<<
+        -- (Esta parte es lenta y ahora ocurre MIENTRAS ambos ven la carga)
         local okRec, proof = nil, nil
         if self.Storage then
             local rec, err = self.Storage:CreatePromised(s.a, s.proposals[s.a], s.b, s.proposals[s.b])
@@ -184,13 +196,19 @@ function SessionManager:OnSummaryConfirm(plr, other, accept)
                 proof = rec.proofCode
             else
                 warn("CreatePromised failed: ", err)
+                -- Si el guardado falla, cancela la sesión para todos
+                self:CancelSession(s, "Error del servidor al guardar el trade.")
+                return
             end
         end
 
-        -- sync PROMISED con proofCode (si lo obtuvimos)
+        -- [CAMBIO 2] Ahora que terminó lo lento, manda el estado final.
+        s.state = "PROMISED"
         self:_syncPromised(s, proof)
     else
-        self:_syncSummary(s) -- re-sincroniza "esperando al otro"
+        -- [CAMBIO 3] Solo uno aceptó. Re-sincroniza el resumen.
+        -- Esto le mostrará al otro jugador que "Tú ya aceptaste".
+        self:_syncSummary(s) 
     end
 end
 
