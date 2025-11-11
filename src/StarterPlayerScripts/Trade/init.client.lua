@@ -10,10 +10,11 @@ local Components     = require(script.Components)
 local ToastClass     = require(script.Toast)
 
 local InviteScreen   = require(script.Screens.Invite)
-local ProposalScreen = require(script.Screens.Proposal)
 local SummaryScreen  = require(script.Screens.Summary)
 local InstrScreen    = require(script.Screens.Instructions)
 local LoadingScreen  = require(script.Screens.Loading)
+local ItemSelector   = require(script.Screens.ItemSelector)
+local ProposalReview = require(script.Screens.ProposalReview)
 
 -- ===== Remotos =====
 local R = RemotesMod.Get()
@@ -25,15 +26,17 @@ local gui    = Components.MakeScreenGui()
 local Toast  = ToastClass.new(gui)
 
 local Invite   = InviteScreen.new(gui)
-local Proposal = ProposalScreen.new(gui)
 local Summary  = SummaryScreen.new(gui)
 local Instr    = InstrScreen.new(gui)
 local Loading  = LoadingScreen.new(gui)
+local Selector = ItemSelector.new(gui)
+local Review   = ProposalReview.new(gui)
 
 -- ===== Estado local =====
 local currentOtherId = nil
 local inviteActive   = false
-local currentTradeState = "NONE" -- Usaremos "NONE", "LOADING", "PROMISED"
+local currentTradeState = "NONE"
+
 -- ===== Clicks =====
 Invite.okBtn.MouseButton1Click:Connect(function()
 	if Invite.otherId then
@@ -51,48 +54,92 @@ Invite.noBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
-Proposal.sendBtn.MouseButton1Click:Connect(function()
-	if not Proposal.otherId then return end
-	-- Leer como ENTERO (sin multiplicar)
-	local units = tonumber(Proposal.mps.Text or "0") or 0
-	units = math.max(0, math.floor(units))
+Selector.acceptBtn.MouseButton1Click:Connect(function()
+	if not Selector.otherId then return end
+	
+	local stagedItems = Selector:GetStagedItems()
+	
+	if #stagedItems == 0 then
+		Toast:Show("Debes 'Añadir' al menos un ítem primero.", 1.5)
+		return
+	end
+	
+	local otherDisplayName = Selector.title.Text:gsub("Ofrecer a <b>", ""):gsub("</b>", "")
+	
+	-- 1. Abre la nueva pantalla CON la lista
+	Review:Open(Selector.otherId, otherDisplayName, stagedItems)
+	-- 2. CIERRA la pantalla anterior DESPUÉS (para no borrar la lista)
+	Selector:Close()
+end)
 
+-- ===================================================
+-- [¡ARREGLO!] Botón "Regresar" corregido
+-- ===================================================
+Review.backBtn.MouseButton1Click:Connect(function()
+	if not Review.otherId then return end
+	
+	-- 1. Guardar los datos en variables locales ANTES de cerrar
+	local otherId = Review.otherId
+	local otherDisplayName = Review.title.Text:gsub("Revisa tu oferta para <b>", ""):gsub("</b>", "")
+
+	-- 2. Ahora sí, cerrar la pantalla (esto borra Review.otherId)
+	Review:Close()
+	
+	-- 3. Abrir la pantalla anterior usando las variables guardadas
+	Selector:Open(otherId, otherDisplayName)
+end)
+-- ===================================================
+
+Review.acceptBtn.MouseButton1Click:Connect(function()
+	if not Review.otherId then return end
+	
+	local proposalData = Review:GetProposalData()
+	
+	local totalValue = 0
+	for _, item in ipairs(proposalData) do
+		totalValue = totalValue + item.value
+	end
+	
+	if totalValue <= 0 then
+		Toast:Show("Debes ingresar un valor mayor a 0.", 1.5)
+		return
+	end
+
+	-- Convertir a los datos que el servidor espera (string de ítems, número de 'mps')
+	local itemsStringList = {}
+	local totalUnits = 0 
+	
+	for _, item in ipairs(proposalData) do
+		local itemStr = string.format("%s (%d %s)", item.name, item.value, item.unit)
+		table.insert(itemsStringList, itemStr)
+		
+		-- (NOTA: Por ahora, 'totalUnits' es solo la suma de los valores,
+		-- ignorando si son K, M, o B. El servidor necesita ser actualizado
+		-- para entender esto si quieres que los valores se sumen correctamente)
+		totalUnits = totalUnits + item.value
+	end
+	
+	local finalItemsString = table.concat(itemsStringList, ", ")
+	
+	-- ¡AQUÍ ENVIAMOS AL SERVIDOR!
 	SUBMIT:FireServer({
-		otherId = Proposal.otherId,
-		items   = Proposal.items.Text or "",
-		mps     = units
+		otherId = Review.otherId,
+		items   = finalItemsString, -- String "Alessio (500 K/s), Godly 1 (10 M/s)"
+		mps     = totalUnits -- Número total (ej: 510)
 	})
 
-	-- Cambiar interfaz a "Propuesta enviada..."
-	Proposal:SetWaiting()
+	Review:Close()
+	-- (El servidor responderá con SYNC "SUMMARY" si el otro jugador también envió)
 end)
 
-Proposal.cancelBtn.MouseButton1Click:Connect(function()
-	if Proposal.otherId then
-		CANCEL:FireServer(Proposal.otherId)
-		Proposal:Close()
-	end
-end)
 
--- ===================================================
--- Click de Aceptar Resumen MODIFICADO (¡ARREGLADO!)
--- ===================================================
 Summary.acceptBtn.MouseButton1Click:Connect(function()
-	-- Lee el otherId ANTES de que cualquier función lo borre
 	local otherId = Summary.otherId 
-	
 	if otherId then
-		-- 1. Deshabilita el botón localmente para evitar doble clic
 		Summary:LockWaiting()
-		
-		-- 2. Ya NO cerramos el resumen ni mostramos la carga aquí.
-		--    El servidor nos dirá cuándo hacerlo (con SYNC).
-
-		-- 3. Envía la confirmación al servidor con el ID guardado
 		CONFIRM:FireServer({ otherId = otherId, accept = true })
 	end
 end)
--- ===================================================
 
 Summary.backBtn.MouseButton1Click:Connect(function()
 	if Summary.otherId then
@@ -115,7 +162,6 @@ REQ.OnClientEvent:Connect(function(payload)
 end)
 
 -- ===== Eventos “legacy” (por compatibilidad si el server los emite) =====
--- (Se mantienen por si acaso, pero el flujo principal usa SYNC)
 RESP.OnClientEvent:Connect(function(payload)
 	if type(payload) ~= "table" then return end
 	if payload.kind == "invite" then
@@ -133,14 +179,15 @@ SUBMIT.OnClientEvent:Connect(function(payload)
 		currentOtherId = payload.otherId
 		inviteActive = false
 		Invite:Hide()
-		Proposal:Open(payload.otherId, payload.otherName or "Jugador")
+		Selector:Open(payload.otherId, payload.otherName or "Jugador")
 	end
 end)
 
 CONFIRM.OnClientEvent:Connect(function(payload)
 	if type(payload) ~= "table" then return end
 	if payload.kind == "openSummary" then
-		Proposal:Close()
+		Selector:Close() 
+		Review:Close() 
 		Summary:Open(
 			currentOtherId,
 			payload.a.mps, payload.a.items,
@@ -150,7 +197,6 @@ CONFIRM.OnClientEvent:Connect(function(payload)
 	elseif payload.kind == "peerConfirmed" then
 		Toast:Show("El otro jugador confirmó el resumen.", 1.4)
 	elseif payload.kind == "promised" then
-		-- Este es el flujo "legacy", el nuevo flujo usa SYNC
 		Loading:Hide()
 		Summary:Close()
 		Instr:Open()
@@ -158,17 +204,15 @@ CONFIRM.OnClientEvent:Connect(function(payload)
 end)
 
 -- ===== Sync autoritativo del servidor =====
--- El servidor envía { state = "INVITE"/"PROPOSAL"/"SUMMARY"/"LOADING"/"PROMISED"/"CANCELED", ... }
 SYNC.OnClientEvent:Connect(function(payload)
 	if not payload or type(payload) ~= "table" then return end
 	local state = payload.state
 
 	if state == "INVITE" then
-		currentTradeState = "INVITE" -- Actualiza el estado
+		currentTradeState = "INVITE"
 		currentOtherId = payload.partnerId
 		Invite:Show(payload.partnerId, payload.partnerName or "Jugador")
 		
-		-- ... (el resto de tu código de INVITE) ...
 		Invite:SetStatuses(payload.youAccepted, payload.partnerAccepted)
 		if payload.partnerAccepted then
 			Invite:SetPartnerAcceptedNote(payload.partnerName or "El jugador")
@@ -181,15 +225,16 @@ SYNC.OnClientEvent:Connect(function(payload)
 		end
 
 	elseif state == "PROPOSAL" then
-		currentTradeState = "PROPOSAL" -- Actualiza el estado
+		currentTradeState = "PROPOSAL"
 		inviteActive = false
 		Invite:Hide()
-		Proposal:Open(currentOtherId, payload.partnerB or payload.partnerA or "Jugador")
+		Selector:Open(currentOtherId, payload.partnerB or payload.partnerA or "Jugador")
 
    elseif state == "SUMMARY" then
-		currentTradeState = "SUMMARY" -- Actualiza el estado
+		currentTradeState = "SUMMARY" 
 		Loading:Hide() 
-		Proposal:Close()
+		Selector:Close() 
+		Review:Close()
 		Summary:Open(
 			currentOtherId,
 			payload.a.mps, payload.a.items,
@@ -200,52 +245,33 @@ SYNC.OnClientEvent:Connect(function(payload)
 			payload.partnerName
 		)
 	
-	-- ===================================================
-	-- ESTADO DE CARGA SINCRONIZADO (¡ARREGLADO!)
-	-- ===================================================
 	elseif state == "LOADING" then
-		-- [ARREGLO] Solo muestra la carga si no hemos llegado ya a PROMISED
 		if currentTradeState ~= "PROMISED" then
-			currentTradeState = "LOADING" -- Actualiza el estado
-			
-			-- Asegúrate de ocultar todas las pantallas anteriores
+			currentTradeState = "LOADING" 
 			Invite:Hide()
-			Proposal:Close()
+			Selector:Close()
+			Review:Close() 
 			Summary:Close()
-			-- Muestra la carga
 			Loading:Show("Confirmando trade...\nEsperando al servidor.")
 		end
-		-- Si 'currentTradeState' YA es 'PROMISED', este paquete 'LOADING'
-		-- llegó tarde y lo ignoraremos por completo.
 
-	-- ===================================================
-	-- ESTADO PROMISED (¡ARREGLADO!)
-	-- ===================================================
 	elseif state == "PROMISED" then
-		currentTradeState = "PROMISED" -- Súper importante: marca el estado final
-		
-		Loading:Hide() -- Oculta la pantalla de carga (seguro)
+		currentTradeState = "PROMISED" 
+		Loading:Hide() 
 		Summary:Close()
-		
-		Instr:Open() -- Muestra las instrucciones
+		Instr:Open() 
 		
 		if payload.proofCode then
 			Toast:Show("Trade confirmado! Proof: "..payload.proofCode, 3)
 		end
-	-- ===================================================
 
-	-- ===================================================
-	-- ESTADO CANCELED (¡ARREGLADO!)
-	-- ===================================================
 	elseif state == "CANCELED" then
-		currentTradeState = "NONE" -- Resetea el estado para un futuro trade
+		currentTradeState = "NONE" 
 		
-		-- Asegúrate de ocultar todas las pantallas
-		Invite:Hide(); Proposal:Close(); Summary:Close(); Loading:Hide()
+		Invite:Hide(); Selector:Close(); Review:Close(); Summary:Close(); Loading:Hide()
 		
 		if payload.reason then
 			Toast:Show(payload.reason, 1.6)
 		end
-	-- ===================================================
 	end
 end)

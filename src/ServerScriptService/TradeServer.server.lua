@@ -51,7 +51,10 @@ end
 local TradeStorage = require(script.Parent:WaitForChild("Trade").TradeStorage)
 local Storage = TradeStorage.new(TradeShared)
 
--- Barrido al entrar (autocierra PROMISED vencidos a SUCCESS y suma puntos)
+-- ===================================================
+-- [¡CAMBIO!] Barrido al entrar DESACTIVADO
+-- ===================================================
+--[[
 Players.PlayerAdded:Connect(function(plr)
 	task.spawn(function()
 		Storage:SweepUserPendings(plr.UserId)
@@ -63,6 +66,9 @@ for _, p in ipairs(Players:GetPlayers()) do
 		Storage:SweepUserPendings(p.UserId)
 	end)
 end
+--]]
+-- ===================================================
+
 
 -- =========================
 -- SessionManager (autoridad de estado)

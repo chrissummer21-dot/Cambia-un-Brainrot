@@ -5,10 +5,17 @@
     "$className": "DataModel",
 
     "ReplicatedStorage": {
-      "$className": "ReplicatedStorage",
-      "TradeShared": { "$path": "src/ReplicatedStorage/TradeShared.lua" },
-      "TradeRemotes": { "$className": "Folder" }
-    },
+  "$className": "ReplicatedStorage",
+  "$ignoreUnknownInstances": true,
+
+  "TradeShared": {
+    "$path": "src/ReplicatedStorage/TradeShared.lua"
+  },
+
+  "BrainrotDatabase": {
+    "$path": "src/ReplicatedStorage/BrainrotDatabase.lua"
+  }
+},
 
    "ServerScriptService": {
   "$className": "ServerScriptService",

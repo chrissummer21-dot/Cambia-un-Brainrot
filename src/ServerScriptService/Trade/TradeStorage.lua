@@ -104,10 +104,6 @@ function TradeStorage:CreatePromised(aPlr, aProp, bPlr, bProp)
 	addToUser(aPlr.UserId); addToUser(bPlr.UserId)
 
 	-- Espejo HTTP (Sheets o Discord)
-	-- [ARREGLO] Se eliminan los task.spawn.
-	-- Ahora el script ESPERARÁ a que httpPost termine antes de continuar.
-	-- Esto da tiempo a que la pantalla de carga del cliente se muestre.
-	
 	httpPost(Config.SHEETS_WEBAPP_URL, record)
 	
 	httpPost(Config.DISCORD_WEBHOOK_URL, {
@@ -119,7 +115,6 @@ function TradeStorage:CreatePromised(aPlr, aProp, bPlr, bProp)
 			color = 0x55cc88
 		}}
 	})
-    -- >>> [FIN DEL ARREGLO]
 
 	return record
 end
@@ -153,32 +148,56 @@ function TradeStorage:MarkDisputed(proofCode, whoUserId, videoUrl, reason)
 	return true
 end
 
--- Intentar autocerrar a SUCCESS si pasaron 48h y no hay disputa
+-- ===================================================
+-- FUNCIÓN TryAutoClose (¡ARREGLADA!)
+-- ===================================================
 function TradeStorage:TryAutoClose(proofCode)
-	return safeUpdate(DS_TRADES, proofCode, function(old)
+	
+	local didChange = false -- Usaremos esto para saber si el estado cambió
+	
+	-- Paso 1: Actualizar el DataStore.
+	-- Esta función de callback AHORA NO CEDE (no tiene yields).
+	local updatedRecord = safeUpdate(DS_TRADES, proofCode, function(old)
 		if not old then return nil end
-		if old.state ~= "PROMISED" then return old end
-		if now() >= (old.expiresAt or 0) then
+		
+		-- Si el trade ya está "PROMISED" y ha expirado
+		if old.state == "PROMISED" and now() >= (old.expiresAt or 0) then
 			old.state = "SUCCESS"
-			-- sumar puntos a ambos
-			local function addPoint(uId)
-				local key = "U:"..uId
-				safeUpdate(DS_POINTS, key, function(p)
-					p = p or { trades = 0, strikes = 0 }
-					p.trades += 1
-					return p
-				end)
-			end
-			addPoint(old.aUserId); addPoint(old.bUserId)
-
-			httpPost(Config.DISCORD_WEBHOOK_URL, {
-				username = "TradeBot",
-				content = ("✅ Trade SUCCESS `%s` (cerrado automáticamente)").format(old.proofCode)
-			})
+			didChange = true -- Marcamos que hemos hecho un cambio
 		end
+		
+		-- Devolvemos 'old' (que ahora está modificado si 'didChange' es true)
 		return old
-	end) ~= nil
+	end)
+
+	-- Paso 2: Si HICIMOS un cambio (didChange es true) y el registro existe,
+	-- ejecutamos las acciones de "pausa" (puntos y Discord) AFUERA del callback.
+	if didChange and updatedRecord then
+		
+		-- Acción 1: Sumar puntos (Esto es un yield, pero ahora es seguro)
+		local function addPoint(uId)
+			local key = "U:"..uId
+			safeUpdate(DS_POINTS, key, function(p)
+				p = p or { trades = 0, strikes = 0 }
+				p.trades += 1
+				return p
+			end)
+		end
+		addPoint(updatedRecord.aUserId)
+		addPoint(updatedRecord.bUserId)
+
+		-- Acción 2: Enviar a Discord (Esto es un yield, pero ahora es seguro)
+		httpPost(Config.DISCORD_WEBHOOK_URL, {
+			username = "TradeBot",
+			content = ("✅ Trade SUCCESS `%s` (cerrado automáticamente)").format(updatedRecord.proofCode)
+		})
+		
+		return true -- El autocierre fue exitoso
+	end
+
+	return false -- No se hizo nada
 end
+-- ===================================================
 
 -- Al conectar un usuario, revisa sus trades pendientes y autocierra si toca
 function TradeStorage:SweepUserPendings(userId)
@@ -186,7 +205,10 @@ function TradeStorage:SweepUserPendings(userId)
 	for _, code in ipairs(list) do
 		local rec = DS_TRADES:GetAsync(code)
 		if rec and rec.state == "PROMISED" and now() >= (rec.expiresAt or 0) then
-			self:TryAutoClose(code)
+			-- task.spawn para que un trade fallido no detenga el bucle (opcional pero recomendado)
+			task.spawn(function()
+				self:TryAutoClose(code)
+			end)
 		end
 	end
 end
