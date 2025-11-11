@@ -33,7 +33,7 @@ local Loading  = LoadingScreen.new(gui)
 -- ===== Estado local =====
 local currentOtherId = nil
 local inviteActive   = false
-
+local currentTradeState = "NONE" -- Usaremos "NONE", "LOADING", "PROMISED"
 -- ===== Clicks =====
 Invite.okBtn.MouseButton1Click:Connect(function()
 	if Invite.otherId then
@@ -164,75 +164,82 @@ SYNC.OnClientEvent:Connect(function(payload)
 	local state = payload.state
 
 	if state == "INVITE" then
+		currentTradeState = "INVITE" -- Actualiza el estado
 		currentOtherId = payload.partnerId
 		Invite:Show(payload.partnerId, payload.partnerName or "Jugador")
-
-        Invite:SetStatuses(payload.youAccepted, payload.partnerAccepted)
-
-		-- Si el otro ya aceptó, muéstralo en la nota
+		
+		-- ... (el resto de tu código de INVITE) ...
+		Invite:SetStatuses(payload.youAccepted, payload.partnerAccepted)
 		if payload.partnerAccepted then
 			Invite:SetPartnerAcceptedNote(payload.partnerName or "El jugador")
 		end
-
-		-- ACTUALIZA estados y lock/unlock según lo que sabe el servidor
 		Invite:SetStatuses(payload.youAccepted, payload.partnerAccepted)
-
 		if payload.youAccepted and not payload.partnerAccepted then
-			-- tú ya aceptaste => bloquea y muestra “esperando…”
 			Invite:LockWaiting()
 		elseif not payload.youAccepted then
-			-- tú no has aceptado => deja habilitado
 			Invite:Unlock()
 		end
 
 	elseif state == "PROPOSAL" then
+		currentTradeState = "PROPOSAL" -- Actualiza el estado
 		inviteActive = false
 		Invite:Hide()
 		Proposal:Open(currentOtherId, payload.partnerB or payload.partnerA or "Jugador")
 
    elseif state == "SUMMARY" then
-    Loading:Hide() -- << [ARREGLO] Oculta la carga
-    Proposal:Close()
-    Summary:Open(
-        currentOtherId,
-        payload.a.mps, payload.a.items,
-        payload.b.mps, payload.b.items,
-        payload.warning,
-        payload.youAccepted,
-        payload.partnerAccepted,
-        payload.partnerName
-    )
+		currentTradeState = "SUMMARY" -- Actualiza el estado
+		Loading:Hide() 
+		Proposal:Close()
+		Summary:Open(
+			currentOtherId,
+			payload.a.mps, payload.a.items,
+			payload.b.mps, payload.b.items,
+			payload.warning,
+			payload.youAccepted,
+			payload.partnerAccepted,
+			payload.partnerName
+		)
 	
 	-- ===================================================
-	-- ¡NUEVO ESTADO DE CARGA SINCRONIZADO!
+	-- ESTADO DE CARGA SINCRONIZADO (¡ARREGLADO!)
 	-- ===================================================
 	elseif state == "LOADING" then
-		-- Asegúrate de ocultar todas las pantallas anteriores
-		Invite:Hide()
-		Proposal:Close()
-		Summary:Close()
-		-- Muestra la carga
-		Loading:Show("Confirmando trade...\nEsperando al servidor.")
+		-- [ARREGLO] Solo muestra la carga si no hemos llegado ya a PROMISED
+		if currentTradeState ~= "PROMISED" then
+			currentTradeState = "LOADING" -- Actualiza el estado
+			
+			-- Asegúrate de ocultar todas las pantallas anteriores
+			Invite:Hide()
+			Proposal:Close()
+			Summary:Close()
+			-- Muestra la carga
+			Loading:Show("Confirmando trade...\nEsperando al servidor.")
+		end
+		-- Si 'currentTradeState' YA es 'PROMISED', este paquete 'LOADING'
+		-- llegó tarde y lo ignoraremos por completo.
 
 	-- ===================================================
-	-- Estado PROMISED MODIFICADO
+	-- ESTADO PROMISED (¡ARREGLADO!)
 	-- ===================================================
 	elseif state == "PROMISED" then
-		Loading:Hide() -- Oculta la pantalla de carga
+		currentTradeState = "PROMISED" -- Súper importante: marca el estado final
+		
+		Loading:Hide() -- Oculta la pantalla de carga (seguro)
 		Summary:Close()
 		
 		Instr:Open() -- Muestra las instrucciones
 		
 		if payload.proofCode then
-			-- Muestra un toast con el código
 			Toast:Show("Trade confirmado! Proof: "..payload.proofCode, 3)
 		end
 	-- ===================================================
 
 	-- ===================================================
-	-- Estado CANCELED MODIFICADO
+	-- ESTADO CANCELED (¡ARREGLADO!)
 	-- ===================================================
 	elseif state == "CANCELED" then
+		currentTradeState = "NONE" -- Resetea el estado para un futuro trade
+		
 		-- Asegúrate de ocultar todas las pantallas
 		Invite:Hide(); Proposal:Close(); Summary:Close(); Loading:Hide()
 		

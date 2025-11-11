@@ -183,11 +183,10 @@ function SessionManager:OnSummaryConfirm(plr, other, accept)
         s.state = "LOADING"
         self:_syncLoading(s)
 
-        -- Da un respiro para que el remoto llegue a los clientes
-        task.wait(0.2) 
+        -- [ARREGLO] Se eliminó el task.wait(0.2).
+        -- La espera de Storage:CreatePromised ES la pantalla de carga.
 
         -- >>> CREA EL REGISTRO EN DATASTORE + WEBHOOKS <<<
-        -- (Esta parte es lenta y ahora ocurre MIENTRAS ambos ven la carga)
         local okRec, proof = nil, nil
         if self.Storage then
             local rec, err = self.Storage:CreatePromised(s.a, s.proposals[s.a], s.b, s.proposals[s.b])
@@ -196,7 +195,6 @@ function SessionManager:OnSummaryConfirm(plr, other, accept)
                 proof = rec.proofCode
             else
                 warn("CreatePromised failed: ", err)
-                -- Si el guardado falla, cancela la sesión para todos
                 self:CancelSession(s, "Error del servidor al guardar el trade.")
                 return
             end
@@ -207,7 +205,6 @@ function SessionManager:OnSummaryConfirm(plr, other, accept)
         self:_syncPromised(s, proof)
     else
         -- [CAMBIO 3] Solo uno aceptó. Re-sincroniza el resumen.
-        -- Esto le mostrará al otro jugador que "Tú ya aceptaste".
         self:_syncSummary(s) 
     end
 end
