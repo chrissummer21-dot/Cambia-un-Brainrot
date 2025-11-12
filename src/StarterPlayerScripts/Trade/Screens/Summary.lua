@@ -1,24 +1,221 @@
+-- Ruta: src/StarterPlayerScripts/Trade/Screens/Summary.lua
 local Components = require(script.Parent.Parent.Components)
+local BrainrotDatabase = require(game:GetService("ReplicatedStorage"):WaitForChild("BrainrotDatabase"))
 
 local Summary = {}
 Summary.__index = Summary
 
+local PLACEHOLDER_IMAGE_ID = "512833360"
+
+-- ===================================================
+-- [¡NUEVO!] Función auxiliar para crear filas de resumen
+-- (Similar a ProposalReview, pero sin inputs)
+-- ===================================================
+local function addTextStroke(guiObject)
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 1.5; stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Transparency = 0.4; stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = guiObject
+	return stroke
+end
+
+-- ===================================================
+-- [¡FUNCIÓN CORREGIDA!]
+-- ===================================================
+local function makeSummaryRow(parent, itemData)
+	local rowFrame = Instance.new("Frame")
+	rowFrame.Name = itemData.id
+	rowFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	rowFrame.Size = UDim2.new(1, 0, 0, 50) -- Fila más delgada
+	rowFrame.Parent = parent
+	Instance.new("UICorner", rowFrame).CornerRadius = UDim.new(0, 8)
+
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0, 8)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = rowFrame
+	
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 8)
+	padding.PaddingRight = UDim.new(0, 8)
+	padding.Parent = rowFrame
+
+	-- 1. Foto (LÓGICA CORREGIDA)
+	local image = Instance.new("ImageLabel")
+	image.Size = UDim2.fromOffset(40, 40)
+	
+	-- El 'itemData' que llega tiene: {id, name, rarity, value, unit}
+	local dbEntry = nil
+	local imageId = nil
+	
+	-- Intento 1: Buscar usando la rareza (la forma más rápida)
+	local category = itemData.rarity
+	if category and BrainrotDatabase[category] then
+		for _, item in ipairs(BrainrotDatabase[category]) do
+			if item.ID == itemData.id then
+				dbEntry = item
+				break
+			end
+		end
+	end
+	
+	-- Intento 2: Si la rareza falló o era nula, buscar en TODA la base de datos
+	if not dbEntry then
+		for cat, items in pairs(BrainrotDatabase) do
+			if dbEntry then break end -- Salir si ya lo encontramos
+			for _, item in ipairs(items) do
+				if item.ID == itemData.id then
+					dbEntry = item
+					break
+				end
+			end
+		end
+	end
+	
+	-- Asignar la imagen si la encontramos
+	if dbEntry then
+		imageId = dbEntry.Image
+	end
+	
+	-- Asignar la imagen (o el placeholder si 'imageId' sigue siendo nil)
+	image.Image = "rbxassetid://" .. (imageId or PLACEHOLDER_IMAGE_ID)
+	
+	-- (Fin de la corrección)
+	
+	image.ScaleType = Enum.ScaleType.Fit
+	image.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+	image.LayoutOrder = 1
+	image.Parent = rowFrame
+	Instance.new("UICorner", image).CornerRadius = UDim.new(0, 6)
+
+	-- 2. Nombre
+	local nameLabel = Components.MakeLabel(itemData.name, 18)
+	nameLabel.Size = UDim2.new(0.4, 0, 0.8, 0)
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	addTextStroke(nameLabel)
+	nameLabel.LayoutOrder = 2
+	nameLabel.Parent = rowFrame
+
+	-- 3. Dinero y Múltiplo
+	-- [ARREGLO DE FORMATO] Usar 'tostring' para valores enteros y '%.1f' para decimales
+	local valueString
+	if itemData.value == math.floor(itemData.value) then
+		valueString = tostring(itemData.value)
+	else
+		valueString = string.format("%.1f", itemData.value)
+	end
+	
+	local valueText = string.format("%s %s", valueString, itemData.unit)
+	local valueLabel = Components.MakeLabel(valueText, 20)
+	valueLabel.Size = UDim2.new(0.35, 0, 0.8, 0)
+	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+	addTextStroke(valueLabel)
+	valueLabel.LayoutOrder = 3
+	valueLabel.Parent = rowFrame
+
+	return rowFrame
+end
+
+-- ===================================================
+-- [¡ACTUALIZADO!] Nueva estructura de 'new'
+-- ===================================================
 function Summary.new(parent)
 	local self = setmetatable({}, Summary)
-	local modal = Components.MakeModal(parent, "Summary", 0.52, 0.56)
+	-- Modal más grande para acomodar las listas
+	local modal = Components.MakeModal(parent, "Summary", 0.6, 0.7)
 
 	local title = Components.MakeLabel("Resumen del trade", 30)
 	title.Font = Enum.Font.GothamBold
 	title.TextXAlignment = Enum.TextXAlignment.Center
 	title.Parent = modal
 
-	local a = Components.MakeLabel("Tú: MPS — | Brainrots —")
-	a.TextXAlignment = Enum.TextXAlignment.Left
-	a.Parent = modal
+	-- Contenedor principal para las dos listas (Tú y Otro)
+	local mainFrame = Instance.new("Frame")
+	mainFrame.Name = "ListsFrame"
+	mainFrame.BackgroundTransparency = 1
+	mainFrame.Size = UDim2.new(1, 0, 0.5, 0) -- Ocupa la mitad del alto
+	mainFrame.Parent = modal
+	
+	local mainLayout = Instance.new("UIListLayout")
+	mainLayout.FillDirection = Enum.FillDirection.Horizontal
+	mainLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	mainLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	mainLayout.Padding = UDim.new(0, 10)
+	mainLayout.Parent = mainFrame
 
-	local b = Components.MakeLabel("Otro: MPS — | Brainrots —")
-	b.TextXAlignment = Enum.TextXAlignment.Left
-	b.Parent = modal
+	-- Columna "TÚ"
+	local aFrame = Instance.new("Frame")
+	aFrame.Name = "TuOferta"
+	aFrame.BackgroundTransparency = 1
+	aFrame.Size = UDim2.new(0.48, 0, 1, 0)
+	aFrame.Parent = mainFrame
+	local aLayout = Instance.new("UIListLayout")
+	aLayout.FillDirection = Enum.FillDirection.Vertical
+	aLayout.Padding = UDim.new(0, 6)
+	aLayout.Parent = aFrame
+	
+	local aTitle = Components.MakeLabel("Tu Oferta", 24)
+	aTitle.TextXAlignment = Enum.TextXAlignment.Left
+	addTextStroke(aTitle)
+	aTitle.Parent = aFrame
+	
+	local aScroll = Instance.new("ScrollingFrame")
+	aScroll.Name = "A_Scroll"
+	aScroll.Size = UDim2.new(1, 0, 0.8, 0)
+	aScroll.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+	aScroll.BackgroundTransparency = 0.5
+	aScroll.BorderSizePixel = 0
+	aScroll.ScrollBarThickness = 6
+	aScroll.Parent = aFrame
+	local aScrollLayout = Instance.new("UIListLayout")
+	aScrollLayout.Padding = UDim.new(0, 6)
+	aScrollLayout.Parent = aScroll
+	
+	-- [CORRECCIÓN 1]
+	Instance.new("UICorner", aScroll).CornerRadius = UDim.new(0, 8)
+	local aPadding = Instance.new("UIPadding", aScroll)
+	aPadding.PaddingTop = UDim.new(0, 6)
+	aPadding.PaddingBottom = UDim.new(0, 6)
+	aPadding.PaddingLeft = UDim.new(0, 6)
+	aPadding.PaddingRight = UDim.new(0, 6)
+
+	-- Columna "OTRO"
+	local bFrame = Instance.new("Frame")
+	bFrame.Name = "OtraOferta"
+	bFrame.BackgroundTransparency = 1
+	bFrame.Size = UDim2.new(0.48, 0, 1, 0)
+	bFrame.Parent = mainFrame
+	local bLayout = Instance.new("UIListLayout")
+	bLayout.FillDirection = Enum.FillDirection.Vertical
+	bLayout.Padding = UDim.new(0, 6)
+	bLayout.Parent = bFrame
+	
+	local bTitle = Components.MakeLabel("Su Oferta", 24)
+	bTitle.TextXAlignment = Enum.TextXAlignment.Left
+	addTextStroke(bTitle)
+	bTitle.Parent = bFrame
+	
+	local bScroll = Instance.new("ScrollingFrame")
+	bScroll.Name = "B_Scroll"
+	bScroll.Size = UDim2.new(1, 0, 0.8, 0)
+	bScroll.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+	bScroll.BackgroundTransparency = 0.5
+	bScroll.BorderSizePixel = 0
+	bScroll.ScrollBarThickness = 6
+	bScroll.Parent = bFrame
+	local bScrollLayout = Instance.new("UIListLayout")
+	bScrollLayout.Padding = UDim.new(0, 6)
+	bScrollLayout.Parent = bScroll
+
+	-- [CORRECCIÓN 2]
+	Instance.new("UICorner", bScroll).CornerRadius = UDim.new(0, 8)
+	local bPadding = Instance.new("UIPadding", bScroll)
+	bPadding.PaddingTop = UDim.new(0, 6)
+	bPadding.PaddingBottom = UDim.new(0, 6)
+	bPadding.PaddingLeft = UDim.new(0, 6)
+	bPadding.PaddingRight = UDim.new(0, 6)
 
 	-- Estado/nota (esperas y aceptación del otro)
 	local note = Components.MakeLabel("")
@@ -35,24 +232,48 @@ function Summary.new(parent)
 
 	self.modal = modal
 	self.title = title
-	self.lineA = a
-	self.lineB = b
 	self.note  = note
 	self.warn  = warn
 	self.acceptBtn = accept
 	self.backBtn   = back
 	self.otherId   = nil
+	
+	-- Guardar referencia a los contenedores de las listas
+	self.aListContainer = aScroll
+	self.bListContainer = bScroll
 
 	return self
 end
 
-function Summary:Open(otherId, aUnits, aItems, bUnits, bItems, warning, youAccepted, partnerAccepted, partnerName)
+-- ===================================================
+-- [¡ACTUALIZADO!] 'Open' ahora espera listas (tables)
+-- ===================================================
+function Summary:Open(otherId, aItemsList, bItemsList, warning, youAccepted, partnerAccepted, partnerName)
 	self.otherId = otherId
 	self.title.Text = "Resumen del trade"
+	self.warn.Text  = warning or "Confirma solo si estás de acuerdo."
 
-	self.lineA.Text = ("Tú: MPS: %d  |  Brainrots: %s"):format(tonumber(aUnits) or 0, aItems or "")
-	self.lineB.Text = ("Otro: MPS: %d  |  Brainrots: %s"):format(tonumber(bUnits) or 0, bItems or "")
-	self.warn.Text  = warning or "Confirma solo si estás de acuerdo. Los MPS son enteros."
+	-- Limpiar listas anteriores
+	for _, child in ipairs(self.aListContainer:GetChildren()) do
+		if child:IsA("Frame") then child:Destroy() end
+	end
+	for _, child in ipairs(self.bListContainer:GetChildren()) do
+		if child:IsA("Frame") then child:Destroy() end
+	end
+	
+	-- Llenar tu lista (aItemsList)
+	if aItemsList and type(aItemsList) == "table" then
+		for _, itemData in ipairs(aItemsList) do
+			makeSummaryRow(self.aListContainer, itemData)
+		end
+	end
+	
+	-- Llenar la lista del otro (bItemsList)
+	if bItemsList and type(bItemsList) == "table" then
+		for _, itemData in ipairs(bItemsList) do
+			makeSummaryRow(self.bListContainer, itemData)
+		end
+	end
 
 	-- pinta estado
 	self:PaintStatus(youAccepted, partnerAccepted, partnerName)
@@ -91,6 +312,14 @@ function Summary:Close()
 	self.modal.Visible = false
 	self.otherId = nil
 	self.note.Text = ""
+	
+	-- Limpiar listas al cerrar
+	for _, child in ipairs(self.aListContainer:GetChildren()) do
+		if child:IsA("Frame") then child:Destroy() end
+	end
+	for _, child in ipairs(self.bListContainer:GetChildren()) do
+		if child:IsA("Frame") then child:Destroy() end
+	end
 end
 
 return Summary

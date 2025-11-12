@@ -55,9 +55,14 @@ function SessionManager:_syncProposal(s)
 	SYNC:FireClient(s.b, payload)
 end
 
+-- ===================================================
+-- [¡FUNCIÓN CORREGIDA!]
+-- ===================================================
 function SessionManager:_syncSummary(s)
-	local sumA = s.proposals[s.a]; local sumB = s.proposals[s.b]
-	local warning = ("Solo trades de mínimo %d unidad(es). Al confirmar, ambos se comprometen a cumplir."):format(self.Shared.MIN_UNITS)
+	local propA = s.proposals[s.a] -- Esto es { itemsList = {...}, totalValue = ... }
+	local propB = s.proposals[s.b]
+	
+	local warning = "Al confirmar, ambos se comprometen a cumplir."
 
 	local youA = s.summaryAccepted[s.a] == true
 	local youB = s.summaryAccepted[s.b] == true
@@ -65,25 +70,27 @@ function SessionManager:_syncSummary(s)
 	-- payload para A
 	SYNC:FireClient(s.a, {
 		state = "SUMMARY",
-		a = { items = sumA.items, mps = sumA.mps },
-		b = { items = sumB.items, mps = sumB.mps },
+		aItems = propA.itemsList, -- ¡La lista de A!
+		bItems = propB.itemsList, -- ¡La lista de B!
 		warning = warning,
 		youAccepted = youA,
 		partnerAccepted = youB,
-		partnerName = string.format("%s (@%s)", s.b.DisplayName, s.b.Name),
+		-- [¡CORRECCIÓN!] Era 's.o', ahora es 's.b'
+		partnerName = string.format("%s (@%s)", s.b.DisplayName, s.b.Name), 
 	})
 
 	-- payload para B
 	SYNC:FireClient(s.b, {
 		state = "SUMMARY",
-		a = { items = sumB.items, mps = sumB.mps }, -- invertido para B
-		b = { items = sumA.items, mps = sumA.mps },
+		aItems = propB.itemsList, -- ¡Invertido para B!
+		bItems = propA.itemsList, -- ¡Invertido para B!
 		warning = warning,
 		youAccepted = youB,
 		partnerAccepted = youA,
 		partnerName = string.format("%s (@%s)", s.a.DisplayName, s.a.Name),
 	})
 end
+-- ===================================================
 
 function SessionManager:_syncLoading(s)
     local payload = { state = "LOADING" }
@@ -145,7 +152,10 @@ function SessionManager:OnInviteResponse(plr, other, accept)
 	end
 end
 
-function SessionManager:OnProposal(plr, other, items, mps)
+-- ===================================================
+-- [¡ACTUALIZADO!]
+-- ===================================================
+function SessionManager:OnProposal(plr, other, itemsList, totalValue)
 	local k = keyFor(plr.UserId, other.UserId)
 	local s = self.sessions[k]
 	if not s or s.state ~= "PROPOSAL" then return end
@@ -154,7 +164,9 @@ function SessionManager:OnProposal(plr, other, items, mps)
 		return
 	end
 
-	s.proposals[plr] = { items = items, mps = mps }
+	-- Almacenamos la lista y el valor
+	s.proposals[plr] = { itemsList = itemsList, totalValue = totalValue }
+	
 	if s.proposals[s.a] and s.proposals[s.b] then
 		s.state = "SUMMARY"
 		self:_syncSummary(s)
@@ -162,6 +174,7 @@ function SessionManager:OnProposal(plr, other, items, mps)
 		-- podrías enviar un "peerProposed" si quieres feedback incremental
 	end
 end
+-- ===================================================
 
 function SessionManager:OnSummaryConfirm(plr, other, accept)
     local k = keyFor(plr.UserId, other.UserId)
@@ -179,54 +192,48 @@ function SessionManager:OnSummaryConfirm(plr, other, accept)
     s.summaryAccepted[plr] = true
 
     if s.summaryAccepted[s.a] and s.summaryAccepted[s.b] then
-        -- [CAMBIO 1] Ambos aceptaron. Manda "LOADING" a los dos.
         s.state = "LOADING"
         self:_syncLoading(s)
 
-        -- >>> CREA EL REGISTRO EN DATASTORE + WEBHOOKS <<<
-        -- (Esta parte es lenta y ahora ocurre MIENTRAS ambos ven la carga)
+        -- >>> CREA EL REGISTRO EN DATASTORE (v2) <<<
         local okRec, proof = nil, nil
         if self.Storage then
+			-- [¡ACTUALIZADO!] Pasamos la propuesta completa (tabla)
             local rec, err = self.Storage:CreatePromised(s.a, s.proposals[s.a], s.b, s.proposals[s.b])
             if rec then
                 s.proofCode = rec.proofCode
                 proof = rec.proofCode
             else
                 warn("CreatePromised failed: ", err)
-                -- Si el guardado falla, cancela la sesión para todos
                 self:CancelSession(s, "Error del servidor al guardar el trade.")
                 return
             end
         end
 
-        -- [CAMBIO 2] Ahora que terminó lo lento, manda el estado final.
         s.state = "PROMISED"
         self:_syncPromised(s, proof)
 		
-        -- ===================================================
-        -- [¡ARREGLO!] Libera a los jugadores para que
-        -- puedan tradear de nuevo.
-        -- ===================================================
         self.engaged[s.a] = nil
         self.engaged[s.b] = nil
         
-        -- (Opcional, pero recomendado): Limpia la sesión terminada de la memoria
         self.sessions[k] = nil
-        -- ===================================================
 		
     else
-        -- [CAMBIO 3] Solo uno aceptó. Re-sincroniza el resumen.
-        -- Esto le mostrará al otro jugador que "Tú ya aceptaste".
         self:_syncSummary(s) 
     end
 end
 
 function SessionManager:CancelSession(s, reason)
-	-- Libera y notifica via SYNC cancel
 	local payload = { state = "CANCELED", reason = reason or "Cancelado." }
-	SYNC:FireClient(s.a, payload); SYNC:FireClient(s.b, payload)
-	self.engaged[s.a] = nil; self.engaged[s.b] = nil
-	self.sessions[keyFor(s.a.UserId, s.b.UserId)] = nil
+	if s.a then SYNC:FireClient(s.a, payload) end
+	if s.b then SYNC:FireClient(s.b, payload) end
+	
+	if s.a then self.engaged[s.a] = nil end
+	if s.b then self.engaged[s.b] = nil end
+	
+	if s.a and s.b then
+		self.sessions[keyFor(s.a.UserId, s.b.UserId)] = nil
+	end
 end
 
 function SessionManager:OnTouched(plr)
@@ -236,7 +243,6 @@ end
 
 function SessionManager:OnTouchEnded(plr)
 	self.inZone[plr] = nil
-	-- si sale, cancela sesiones no prometidas
 	for k, s in pairs(self.sessions) do
 		if s.a == plr or s.b == plr then
 			if s.state ~= "PROMISED" then

@@ -127,23 +127,23 @@ end)
 -- 2) PROPOSAL: validación + entregar a SM
 --    Nota: 'mps' representa "unidades enteras" en tu diseño actual.
 SUBMIT.OnServerEvent:Connect(function(plr, data)
-	if type(data) ~= "table" then return end
-	local otherId = tonumber(data.otherId or 0) or 0
-	local other = Players:GetPlayerByUserId(otherId)
-	if not other then return end
+		if type(data) ~= "table" then return end
+		local otherId = tonumber(data.otherId or 0) or 0
+		local other = Players:GetPlayerByUserId(otherId)
+		if not other then return end
 
-	local items = tostring(data.items or "")
-	local units = tonumber(data.mps or 0) or 0
+		local itemsList = data.itemsList
+		local totalValue = tonumber(data.totalValue or 0) or 0
 
-	local ok, msg = TradeShared.validateProposal(items, units)
-	if not ok then
-		notify(plr, "error", msg)
-		return
-	end
+		local ok, msg = TradeShared.validateProposal(itemsList, totalValue)
+		if not ok then
+			notify(plr, "error", msg)
+			return
+		end
 
-	items = TradeShared.sanitizeText(items)
-	SM:OnProposal(plr, other, items, units)
-end)
+		-- Ya no sanitizamos texto, pasamos la tabla limpia
+		SM:OnProposal(plr, other, itemsList, totalValue)
+	end)
 
 -- 3) SUMMARY: confirmar / cancelar
 CONFIRM.OnServerEvent:Connect(function(plr, data)

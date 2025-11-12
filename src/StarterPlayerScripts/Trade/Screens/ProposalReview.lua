@@ -1,4 +1,3 @@
--- Ruta: src/StarterPlayerScripts/Trade/Screens/ProposalReview.lua
 local Components = require(script.Parent.Parent.Components)
 local BrainrotDatabase = require(game:GetService("ReplicatedStorage"):WaitForChild("BrainrotDatabase"))
 
@@ -8,11 +7,16 @@ ProposalReview.__index = ProposalReview
 local PLACEHOLDER_IMAGE_ID = "512833360"
 local UNITS = {"K/s", "M/s", "B/s"}
 
+-- Dropdown actualmente abierto (frame de opciones)
+local currentOpenOptions = nil
+
 -- Función auxiliar para añadir borde negro al texto
 local function addTextStroke(guiObject)
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 1.5; stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Transparency = 0.4; stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Thickness = 1.5
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Transparency = 0.4
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Parent = guiObject
 	return stroke
 end
@@ -24,6 +28,8 @@ local function makeReviewRow(parent, itemData)
 	rowFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 	rowFrame.Size = UDim2.new(1, 0, 0, 60)
 	rowFrame.Parent = parent
+	rowFrame.ZIndex = 1
+	rowFrame.ClipsDescendants = false
 	Instance.new("UICorner", rowFrame).CornerRadius = UDim.new(0, 8)
 
 	local layout = Instance.new("UIListLayout")
@@ -41,23 +47,23 @@ local function makeReviewRow(parent, itemData)
 	-- 1. Foto
 	local image = Instance.new("ImageLabel")
 	image.Size = UDim2.fromOffset(50, 50)
-	-- [CAMBIO] Usa el 'Image' del itemData (que puede ser nil para custom)
 	local imageId = (itemData.Image and "rbxassetid://"..itemData.Image) or ("rbxassetid://"..PLACEHOLDER_IMAGE_ID)
 	image.Image = imageId
 	image.ScaleType = Enum.ScaleType.Fit
 	image.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 	image.LayoutOrder = 1
 	image.Parent = rowFrame
+	image.ZIndex = rowFrame.ZIndex
 	Instance.new("UICorner", image).CornerRadius = UDim.new(0, 6)
 
 	-- 2. Nombre
-	-- [CAMBIO] Usa el 'Name' del itemData (custom o db)
 	local nameLabel = Components.MakeLabel(itemData.Name, 20)
 	nameLabel.Size = UDim2.new(0.35, 0, 0.8, 0)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 	addTextStroke(nameLabel)
 	nameLabel.LayoutOrder = 2
 	nameLabel.Parent = rowFrame
+	nameLabel.ZIndex = rowFrame.ZIndex
 
 	-- 3. Campo de Texto
 	local valueBox = Components.MakeInput("0", 22)
@@ -67,58 +73,36 @@ local function makeReviewRow(parent, itemData)
 	addTextStroke(valueBox)
 	valueBox.LayoutOrder = 3
 	valueBox.Parent = rowFrame
+	valueBox.ZIndex = rowFrame.ZIndex
 	
--- NUEVO CÓDIGO (DESPUÉS) --
+	-- FILTRO NÚMERICO
 	valueBox:GetPropertyChangedSignal("Text"):Connect(function()
 		local text = valueBox.Text
-		
-		-- 1. Quitar caracteres inválidos (todo menos dígitos y puntos)
 		local filtered = text:gsub("[^%d.]", "")
-		
-		-- 2. Asegurar que solo haya UN punto decimal Y MÁXIMO UN decimal
 		local firstDot = filtered:find(".", 1, true)
 		if firstDot then
 			local pre = filtered:sub(1, firstDot)
 			local post = filtered:sub(firstDot + 1)
-			
-			-- Quitar cualquier otro punto del resto del string
 			post = post:gsub("%.", "")
-			
-			-- (REGLA NUEVA) Asegurar que solo haya UN dígito después del punto
 			if #post > 1 then
 				post = post:sub(1, 1)
 			end
-			
 			filtered = pre .. post
 		end
-
-		-- 3. (REGLA NUEVA) Asegurar MÁXIMO 5 caracteres en total
 		if #filtered > 5 then
 			filtered = filtered:sub(1, 5)
-			
-			-- Si el corte de 5 chars rompió la regla de 1 decimal 
-			-- (ej: el 5to char fue el 2do decimal "12.34"),
-			-- debemos re-cortar para respetar el decimal.
 			local dotPos = filtered:find(".", 1, true)
 			if dotPos and (#filtered - dotPos) > 1 then
-				-- Ej: "12.34" se convierte en "12.3"
 				filtered = filtered:sub(1, dotPos + 1)
 			end
-			
-			-- Si el corte dejó un punto al final (ej: "1234."), quitarlo.
 			if filtered:sub(-1) == "." then
 				filtered = filtered:sub(1, 4)
 			end
 		end
-
-		-- 4. Validar el valor numérico (TOPE 999.9)
-		-- (La regla de 5 chars puede permitir '12345' o '5000')
 		local num = tonumber(filtered)
 		if num and num > 999.9 then
-			filtered = "999.9" -- Aplicar el tope máximo
+			filtered = "999.9"
 		end
-		
-		-- 5. Actualizar el texto solo si cambió
 		if valueBox.Text ~= filtered then
 			valueBox.Text = filtered
 		end
@@ -130,38 +114,64 @@ local function makeReviewRow(parent, itemData)
 	dropdownFrame.BackgroundTransparency = 1
 	dropdownFrame.LayoutOrder = 4
 	dropdownFrame.Parent = rowFrame
+	dropdownFrame.ZIndex = rowFrame.ZIndex
+	dropdownFrame.ClipsDescendants = false
 
 	local dropdownBtn = Components.MakeButton(UNITS[1])
 	dropdownBtn.Size = UDim2.fromScale(1, 1)
 	addTextStroke(dropdownBtn)
 	dropdownBtn.Parent = dropdownFrame
-	
+	dropdownBtn.ZIndex = rowFrame.ZIndex + 1
+
 	local optionsFrame = Instance.new("Frame")
 	optionsFrame.Name = "Options"
 	optionsFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 	optionsFrame.BorderSizePixel = 0
-	optionsFrame.Position = UDim2.fromScale(0, 1) 
-	optionsFrame.Size = UDim2.new(1, 0, 0, 0) 
+	optionsFrame.Position = UDim2.fromScale(0, 1)
+	optionsFrame.Size = UDim2.new(1, 0, 0, 0)
 	optionsFrame.AutomaticSize = Enum.AutomaticSize.Y
 	optionsFrame.Visible = false
 	optionsFrame.Parent = dropdownBtn
-	optionsFrame.ZIndex = 2
+	optionsFrame.ClipsDescendants = false
+
+	-- ZIndex alto para estar delante de todo
+	optionsFrame.ZIndex = 50
 	Instance.new("UICorner", optionsFrame).CornerRadius = UDim.new(0, 6)
-	Instance.new("UIListLayout", optionsFrame).Padding = UDim.new(0, 4)
-	
+
+	local optionsLayout = Instance.new("UIListLayout")
+	optionsLayout.Padding = UDim.new(0, 4)
+	optionsLayout.Parent = optionsFrame
+
+	-- helper para abrir/cerrar asegurando solo uno abierto
+	local function setOptionsVisible(visible)
+		if visible then
+			if currentOpenOptions and currentOpenOptions ~= optionsFrame then
+				currentOpenOptions.Visible = false
+			end
+			currentOpenOptions = optionsFrame
+			optionsFrame.Visible = true
+		else
+			if currentOpenOptions == optionsFrame then
+				currentOpenOptions = nil
+			end
+			optionsFrame.Visible = false
+		end
+	end
+
 	for _, unit in ipairs(UNITS) do
 		local optionBtn = Components.MakeButton(unit)
 		optionBtn.Size = UDim2.new(1, 0, 0, 30)
 		optionBtn.Parent = optionsFrame
-		
+		optionBtn.ZIndex = optionsFrame.ZIndex + 1
+
 		optionBtn.MouseButton1Click:Connect(function()
-			dropdownBtn.Text = unit 
-			optionsFrame.Visible = false 
+			dropdownBtn.Text = unit
+			setOptionsVisible(false)
 		end)
 	end
 
 	dropdownBtn.MouseButton1Click:Connect(function()
-		optionsFrame.Visible = not optionsFrame.Visible
+		setOptionsVisible(not optionsFrame.Visible)
 	end)
 
 	return rowFrame, valueBox, dropdownBtn
@@ -172,7 +182,8 @@ function ProposalReview.new(parent)
 	
 	local modal = Components.MakeModal(parent, "ProposalReview", 0.6, 0.7)
 	modal.Visible = false
-	
+	modal.ClipsDescendants = false
+
 	local modalLayout = modal:FindFirstChildOfClass("UIListLayout")
 	modalLayout.Padding = UDim.new(0, 12)
 
@@ -189,7 +200,8 @@ function ProposalReview.new(parent)
 	scrollFrame.BorderSizePixel = 0
 	scrollFrame.ScrollBarThickness = 6
 	scrollFrame.Parent = modal
-	
+	scrollFrame.ClipsDescendants = false
+
 	local listLayout = Instance.new("UIListLayout")
 	listLayout.Padding = UDim.new(0, 8)
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -236,24 +248,34 @@ end
 local function getItemData(itemObject)
 	if itemObject.type == "Database" then
 		-- Es un ítem de la DB, buscarlo
-		for category, items in pairs(BrainrotDatabase) do
-			for _, item in ipairs(items) do
+		local category = itemObject.rarity or "Secret" -- Usa la rareza que guardamos
+
+		if BrainrotDatabase[category] then
+			for _, item in ipairs(BrainrotDatabase[category]) do
 				if item.ID == itemObject.id then
-					return item -- Devuelve la tabla completa de la DB
+					item.Rarity = category -- Asegurarse de que esté en el objeto
+					return item
 				end
 			end
 		end
+		-- Fallback si no se encuentra en esa categoría (raro)
+		for categoryFallback, items in pairs(BrainrotDatabase) do
+			for _, item in ipairs(items) do
+				if item.ID == itemObject.id then
+					item.Rarity = categoryFallback
+					return item
+				end
+			end
+		end
+
 	elseif itemObject.type == "Custom" then
-		-- Es un ítem custom, construir una tabla compatible
 		return {
 			Name = itemObject.name,
-			ID = itemObject.name, -- Usar el nombre como ID único
-			Image = nil, -- No tiene imagen
+			ID = itemObject.name,
+			Image = nil,
 			Rarity = itemObject.rarity
 		}
 	end
-	
-	-- Fallback por si algo sale mal
 	return {Name = "Error", ID = "error", Image = nil}
 end
 
@@ -265,15 +287,13 @@ function ProposalReview:Open(otherId, otherDisplay, stagedItems)
 		if child:IsA("Frame") then child:Destroy() end
 	end
 	table.clear(self.itemInputs)
+	currentOpenOptions = nil
 	
-	-- Poblar la lista con los ítems (objetos)
 	for _, itemObject in ipairs(stagedItems) do
 		local itemData = getItemData(itemObject)
-		
 		local row, valueBox, unitBtn = makeReviewRow(self.scrollFrame, itemData)
 		table.insert(self.itemInputs, {
-			-- [CAMBIO] Guardar los datos del ítem para el envío
-			data = itemData, 
+			data = itemData,
 			valueBox = valueBox,
 			unitBtn = unitBtn
 		})
@@ -281,11 +301,11 @@ function ProposalReview:Open(otherId, otherDisplay, stagedItems)
 	
 	self.modal.Visible = true
 end
--- ===================================================
 
 function ProposalReview:Close()
 	self.modal.Visible = false
 	self.otherId = nil
+	currentOpenOptions = nil
 	
 	for _, child in ipairs(self.scrollFrame:GetChildren()) do
 		if child:IsA("Frame") then child:Destroy() end
@@ -293,9 +313,6 @@ function ProposalReview:Close()
 	table.clear(self.itemInputs)
 end
 
--- ===================================================
--- [¡CAMBIO!] Recolectar datos actualizados
--- ===================================================
 function ProposalReview:GetProposalData()
 	local proposal = {}
 	for _, input in ipairs(self.itemInputs) do
@@ -303,14 +320,14 @@ function ProposalReview:GetProposalData()
 		local unit = input.unitBtn.Text
 		
 		table.insert(proposal, {
-			id = input.data.ID,
-			name = input.data.Name,
-			value = value,
-			unit = unit
-		})
+	id = input.data.ID,
+	name = input.data.Name,
+	rarity = input.data.Rarity or "Unknown", -- ¡Añadido!
+	value = value,
+	unit = unit
+})
 	end
 	return proposal
 end
--- ===================================================
 
 return ProposalReview

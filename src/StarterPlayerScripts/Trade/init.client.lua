@@ -32,7 +32,7 @@ local Summary  = SummaryScreen.new(gui)
 local Instr    = InstrScreen.new(gui)
 local Loading  = LoadingScreen.new(gui)
 local Selector = ItemSelector.new(gui)
-local Review   = ProposalReview.new(gui)
+local Review   = ProposalReview.new(gui, Toast) -- [CORREGIDO] Pasar Toast
 -- [¡NUEVO!] Instanciar la pantalla de espera
 local Waiting  = WaitingScreen.new(gui)
 
@@ -85,10 +85,14 @@ Review.backBtn.MouseButton1Click:Connect(function()
 	Selector:Open(otherId, otherDisplayName)
 end)
 
+-- ===================================================
+-- [¡CORREGIDO!]
+-- Envía 'itemsList' (tabla) y 'totalValue'
+-- ===================================================
 Review.acceptBtn.MouseButton1Click:Connect(function()
 	if not Review.otherId then return end
 	
-	local proposalData = Review:GetProposalData()
+	local proposalData = Review:GetProposalData() -- Esto ya tiene {name, rarity, value, unit}
 	
 	local totalValue = 0
 	for _, item in ipairs(proposalData) do
@@ -100,30 +104,14 @@ Review.acceptBtn.MouseButton1Click:Connect(function()
 		return
 	end
 
-	local itemsStringList = {}
-	local totalUnits = 0 
-	
-	for _, item in ipairs(proposalData) do
-		local itemStr = string.format("%s (%d %s)", item.name, item.value, item.unit)
-		table.insert(itemsStringList, itemStr)
-		totalUnits = totalUnits + item.value
-	end
-	
-	local finalItemsString = table.concat(itemsStringList, ", ")
-	
 	SUBMIT:FireServer({
 		otherId = Review.otherId,
-		items   = finalItemsString,
-		mps     = totalUnits
+		itemsList   = proposalData, -- ¡Enviamos la tabla completa!
+		totalValue  = totalValue  -- El valor total
 	})
 
 	Review:Close()
-	
-	-- ===================================================
-	-- [¡CAMBIO!] Mostrar la pantalla de "Esperando"
-	-- ===================================================
 	Waiting:Show()
-	-- ===================================================
 end)
 
 
@@ -177,19 +165,19 @@ SUBMIT.OnClientEvent:Connect(function(payload)
 	end
 end)
 
+-- ===================================================
+-- [¡CORREGIDO!]
+-- Se eliminó el 'payload.kind == "openSummary"' obsoleto.
+-- El evento SYNC 'state == "SUMMARY"' se encarga de esto.
+-- ===================================================
 CONFIRM.OnClientEvent:Connect(function(payload)
 	if type(payload) ~= "table" then return end
-	if payload.kind == "openSummary" then
-		Selector:Close() 
-		Review:Close() 
-		Waiting:Hide() -- [¡CAMBIO!] Ocultar al recibir resumen
-		Summary:Open(
-			currentOtherId,
-			payload.a.mps, payload.a.items,
-			payload.b.mps, payload.b.items,
-			payload.warning
-		)
-	elseif payload.kind == "peerConfirmed" then
+
+	-- El 'payload.kind == "openSummary"' se ha eliminado.
+	-- Esta lógica ahora es manejada 100% por el evento
+	-- SYNC 'state == "SUMMARY"' para evitar duplicados.
+
+	if payload.kind == "peerConfirmed" then
 		Toast:Show("El otro jugador confirmó el resumen.", 1.4)
 	elseif payload.kind == "promised" then
 		Loading:Hide()
@@ -225,16 +213,20 @@ SYNC.OnClientEvent:Connect(function(payload)
 		Invite:Hide()
 		Selector:Open(currentOtherId, payload.partnerB or payload.partnerA or "Jugador")
 
+   -- ===================================================
+   -- [¡CORREGIDO!]
+   -- Lee 'payload.aItems' y 'payload.bItems' (listas)
+   -- ===================================================
    elseif state == "SUMMARY" then
 		currentTradeState = "SUMMARY" 
 		Loading:Hide() 
 		Selector:Close() 
 		Review:Close()
-		Waiting:Hide() -- [¡CAMBIO!] Ocultar al recibir resumen
+		Waiting:Hide() 
 		Summary:Open(
 			currentOtherId,
-			payload.a.mps, payload.a.items,
-			payload.b.mps, payload.b.items,
+			payload.aItems, -- ¡La lista de ítems de A!
+			payload.bItems, -- ¡La lista de ítems de B!
 			payload.warning,
 			payload.youAccepted,
 			payload.partnerAccepted,

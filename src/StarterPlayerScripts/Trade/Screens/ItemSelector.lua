@@ -342,6 +342,7 @@ function ItemSelector.new(parent)
 	self.title = title
 	self.scrollFrame = scrollFrame
 	self.grid = grid
+	self.currentRarityCategory = "God" -- Añadir esto (default al abrir)
 	self.otherId = nil
 
 	self.stagedItems = {}
@@ -371,6 +372,7 @@ end
 
 -- Limpia y rellena la cuadrícula con ítems de una categoría
 function ItemSelector:PopulateGrid(category)
+	self.currentRarityCategory = category -- Añadir esta línea
 	for _, child in ipairs(self.scrollFrame:GetChildren()) do
 		if child:IsA("ImageButton") then
 			child:Destroy()
@@ -415,6 +417,7 @@ function ItemSelector:OnAdd()
 		table.insert(self.stagedItems, {
 			type = "Database",
 			id = self.currentItem,
+			rarity = self.currentRarityCategory -- ¡Añadido!
 		})
 		if self.itemInstances[self.currentItem] then
 			self.itemInstances[self.currentItem].stroke.Enabled = false

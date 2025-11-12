@@ -21,20 +21,24 @@ function TradeShared.sanitizeText(s)
 end
 
 -- mps ahora representa “unidades enteras”
-function TradeShared.validateProposal(itemsText, units)
-	itemsText = TradeShared.sanitizeText(itemsText)
-	if itemsText == "" or #itemsText < 3 then
-		return false, "Describe los brainrots a intercambiar (sin links)."
+-- NUEVO CÓDIGO (DESPUÉS) --
+function TradeShared.validateProposal(itemsList, totalValue)
+	-- Validamos la tabla de ítems
+	if type(itemsList) ~= "table" or #itemsList == 0 then
+		return false, "Debes ofrecer al menos un ítem."
+	end
+	
+	-- (Opcional) Validación más profunda de la lista
+	for _, item in ipairs(itemsList) do
+		if type(item) ~= "table" or not item.name or not item.rarity or not item.value then
+			return false, "Datos de la propuesta corruptos."
+		end
 	end
 
-	-- Debe ser entero >= MIN_UNITS
-	if type(units) ~= "number" then return false, "Ingresa un número válido." end
+	-- Validamos el valor total
+	if type(totalValue) ~= "number" then return false, "Ingresa un número válido." end
 	
-	-- Eliminamos la validación de math.floor para permitir decimales
-
-	-- El cliente ya valida que el total sea > 0
-	-- El servidor debe confirmar esto.
-	if units <= 0 then 
+	if totalValue <= 0 then 
 		return false, "El valor total debe ser mayor a 0."
 	end
 

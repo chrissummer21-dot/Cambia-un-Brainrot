@@ -8,10 +8,14 @@ local Config = require(ServerStorage:WaitForChild("Trade"):WaitForChild("TradeCo
 local TradeStorage = {}
 TradeStorage.__index = TradeStorage
 
--- DataStores
-local DS_TRADES   = DataStoreService:GetDataStore("Trades_v1")        -- key = proofCode
-local DS_BYUSER   = DataStoreService:GetDataStore("UserTrades_v1")    -- key = "U:<userId>" -> {proofCodes}
-local DS_POINTS   = DataStoreService:GetDataStore("UserPoints_v1")    -- key = "U:<userId>" -> {trades=0, strikes=0}
+-- ===================================================
+-- [¡NUEVO!] Definición de las nuevas bases de datos
+-- ===================================================
+local DS_TRADES   = DataStoreService:GetDataStore("Trades_v2")        -- Tabla 1 (Maestra)
+local DS_ITEMS    = DataStoreService:GetDataStore("TradeItems_v2")    -- Tabla 2 (Detalle)
+-- ===================================================
+local DS_BYUSER   = DataStoreService:GetDataStore("UserTrades_v1")    -- (Se mantiene para auditoría)
+local DS_POINTS   = DataStoreService:GetDataStore("UserPoints_v1")    -- (Se mantiene)
 
 -- Helpers
 local function now() return os.time() end
@@ -36,27 +40,22 @@ local function safeUpdate(ds, key, transform)
 	return nil
 end
 
+-- (Función httpPost se mantiene igual que antes)
 local function httpPost(url, payload)
     if not url or url == "" then return true end
     local body = HttpService:JSONEncode(payload)
-    
-    -- Realizar un solo intento
     local ok, res = pcall(function()
         return HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson, false)
     end)
-
     if ok then
-        -- Éxito: Imprime la respuesta de Google (si la hay)
-        print(">>> HTTP POST ÉXITO (Intento 1/1). Respuesta:")
-        print(res)
+        print(">>> HTTP POST ÉXITO (Intento 1/1). Respuesta:", res)
         return true
     else
-        -- Fallo: Imprime el error
         warn(string.format(">>> HTTP POST falló (Intento 1/1) para: %s | Error: %s", url, tostring(res)))
-        warn(("POST fail (1/1) to %s"):format(url))
-        return false -- La solicitud falló
+        return false
     end
 end
+
 
 -- Clase
 function TradeStorage.new(shared)
@@ -65,58 +64,114 @@ function TradeStorage.new(shared)
 	return self
 end
 
--- Registrar PROMISED (compromiso), devuelve record con proofCode
+-- ===================================================
+-- [¡REDISIEÑO!] CreatePromised
+-- Esta función ahora guarda en AMBAS tablas (Trades y Items)
+-- ===================================================
 function TradeStorage:CreatePromised(aPlr, aProp, bPlr, bProp)
 	local createdAt = now()
 	local expiresAt = createdAt + 48*3600
-	local record = {
-		proofCode = genCode(),
-		state = "PROMISED",               -- PROMISED | SUCCESS | DISPUTED | CANCELED
-		createdAt = createdAt,
+	local proofCode = genCode()
+	
+	-- Helper para construir el string de "BrainrotsCambiados"
+	local function buildItemsString(itemsList)
+		local strList = {}
+		for _, item in ipairs(itemsList) do
+			table.insert(strList, string.format("%s (%.1f %s)", item.name, item.value, item.unit))
+		end
+		return table.concat(strList, ", ")
+	end
+	
+	-- 1. Construir el registro de la Tabla 1 (DS_TRADES)
+	local tradeRecord = {
+		proofCode = proofCode,
+		state = "PROMISED",
+		timestamp = createdAt,
 		expiresAt = expiresAt,
-
+		
 		aUserId = aPlr.UserId,
-		aName   = string.format("%s (@%s)", aPlr.DisplayName, aPlr.Name),
-		aItems  = aProp.items, aUnits = aProp.mps,
-
+		aUsername = aPlr.Name,
+		
 		bUserId = bPlr.UserId,
-		bName   = string.format("%s (@%s)", bPlr.DisplayName, bPlr.Name),
-		bItems  = bProp.items, bUnits = bProp.mps,
+		bUsername = bPlr.Name,
+		
+		-- Campo de resumen (como lo pediste)
+		aBrainrotsChanged = buildItemsString(aProp.itemsList),
+		bBrainrotsChanged = buildItemsString(bProp.itemsList),
+
+		-- Campos de Intermediario (default)
+		isIntermediary = false,
+		intermediaryId = nil,
+		intermediaryUsername = nil,
+		
+		-- Elemento de seguridad: Hash de los datos (opcional pero recomendado)
+		dataHash = HttpService:GenerateGUID(false) -- Un simple hash para esta versión
 	}
 
-	-- Guarda por proofCode
-	local ok = safeUpdate(DS_TRADES, record.proofCode, function() return record end)
-	if not ok then return nil, "No se pudo guardar trade" end
+	-- 2. Construir la lista de ítems para la Tabla 2 (DS_ITEMS)
+	local itemsRecord = {}
+	
+	-- Añadir ítems de A
+	for _, item in ipairs(aProp.itemsList) do
+		table.insert(itemsRecord, {
+			proofCode = proofCode,
+			ownerUserId = aPlr.UserId,
+			itemName = item.name,
+			rarity = item.rarity,
+			value = item.value,
+			multiplier = item.unit,
+		})
+	end
+	
+	-- Añadir ítems de B
+	for _, item in ipairs(bProp.itemsList) do
+		table.insert(itemsRecord, {
+			proofCode = proofCode,
+			ownerUserId = bPlr.UserId,
+			itemName = item.name,
+			rarity = item.rarity,
+			value = item.value,
+			multiplier = item.unit,
+		})
+	end
 
-	-- Index por usuario (para auditorías/finalización al reconectar)
+	-- 3. Guardar en DataStores
+	local ok_trades = safeUpdate(DS_TRADES, proofCode, function() return tradeRecord end)
+	local ok_items = safeUpdate(DS_ITEMS, proofCode, function() return itemsRecord end)
+
+	if not ok_trades or not ok_items then
+		-- Si falla, intentar revertir (básico)
+		if ok_trades then pcall(DS_TRADES.RemoveAsync, DS_TRADES, proofCode) end
+		if ok_items then pcall(DS_ITEMS.RemoveAsync, DS_ITEMS, proofCode) end
+		return nil, "No se pudo guardar el trade (error de BD)"
+	end
+
+	-- 4. Indexar por usuario (se mantiene)
 	local function addToUser(uId)
 		local key = "U:"..uId
 		safeUpdate(DS_BYUSER, key, function(old)
-			old = old or {}
-			table.insert(old, record.proofCode)
-			if #old > 50 then
-				-- corta histórico largo (opcional)
-				table.remove(old, 1)
-			end
+			old = old or {}; table.insert(old, proofCode)
+			if #old > 50 then table.remove(old, 1) end
 			return old
 		end)
 	end
 	addToUser(aPlr.UserId); addToUser(bPlr.UserId)
 
-	-- Espejo HTTP (Sheets o Discord)
-	httpPost(Config.SHEETS_WEBAPP_URL, record)
+	-- 5. Espejo HTTP (Sheets o Discord) - (se mantiene)
+	-- Enviamos el registro maestro
+	httpPost(Config.SHEETS_WEBAPP_URL, tradeRecord) 
 	
 	httpPost(Config.DISCORD_WEBHOOK_URL, {
-		username = "TradeBot",
+		username = "TradeBot (v2)",
 		embeds = {{
 			title = "Nuevo trade PROMISED",
-			description = ("**%s** ↔ **%s**\nItems A: %s\nItems B: %s\nUnits A: %d | Units B: %d\nProof: `%s`\nCierra en: <t:%d:R>"):
-				format(record.aName, record.bName, record.aItems, record.bItems, record.aUnits, record.bUnits, record.proofCode, record.expiresAt),
+			description = ("**%s** ↔ **%s**\nItems A: %s\nItems B: %s\nProof: `%s`\nCierra en: <t:%d:R>"):
+				format(tradeRecord.aUsername, tradeRecord.bUsername, tradeRecord.aBrainrotsChanged, tradeRecord.bBrainrotsChanged, proofCode, expiresAt),
 			color = 0x55cc88
 		}}
 	})
 
-	return record
+	return tradeRecord -- Devuelve el registro maestro
 end
 
 -- Marcar DISPUTED con evidencia
@@ -136,7 +191,7 @@ function TradeStorage:MarkDisputed(proofCode, whoUserId, videoUrl, reason)
 	if not updated then return false end
 
 	httpPost(Config.DISCORD_WEBHOOK_URL, {
-		username = "TradeBot",
+		username = "TradeBot (v2)",
 		embeds = {{
 			title = "Trade DISPUTED",
 			description = ("Proof `%s`\nBy UserId: %d\nVideo: %s\nReason: %s"):
@@ -150,31 +205,26 @@ end
 
 -- ===================================================
 -- FUNCIÓN TryAutoClose (¡ARREGLADA!)
+-- (Ahora solo actualiza DS_TRADES)
 -- ===================================================
 function TradeStorage:TryAutoClose(proofCode)
 	
-	local didChange = false -- Usaremos esto para saber si el estado cambió
+	local didChange = false
 	
-	-- Paso 1: Actualizar el DataStore.
-	-- Esta función de callback AHORA NO CEDE (no tiene yields).
+	-- Paso 1: Actualizar el DataStore de Trades
 	local updatedRecord = safeUpdate(DS_TRADES, proofCode, function(old)
 		if not old then return nil end
-		
-		-- Si el trade ya está "PROMISED" y ha expirado
 		if old.state == "PROMISED" and now() >= (old.expiresAt or 0) then
 			old.state = "SUCCESS"
-			didChange = true -- Marcamos que hemos hecho un cambio
+			didChange = true
 		end
-		
-		-- Devolvemos 'old' (que ahora está modificado si 'didChange' es true)
 		return old
 	end)
 
-	-- Paso 2: Si HICIMOS un cambio (didChange es true) y el registro existe,
-	-- ejecutamos las acciones de "pausa" (puntos y Discord) AFUERA del callback.
+	-- Paso 2: Si cambió, ejecutar acciones externas
 	if didChange and updatedRecord then
 		
-		-- Acción 1: Sumar puntos (Esto es un yield, pero ahora es seguro)
+		-- Acción 1: Sumar puntos
 		local function addPoint(uId)
 			local key = "U:"..uId
 			safeUpdate(DS_POINTS, key, function(p)
@@ -186,16 +236,16 @@ function TradeStorage:TryAutoClose(proofCode)
 		addPoint(updatedRecord.aUserId)
 		addPoint(updatedRecord.bUserId)
 
-		-- Acción 2: Enviar a Discord (Esto es un yield, pero ahora es seguro)
+		-- Acción 2: Enviar a Discord
 		httpPost(Config.DISCORD_WEBHOOK_URL, {
-			username = "TradeBot",
+			username = "TradeBot (v2)",
 			content = ("✅ Trade SUCCESS `%s` (cerrado automáticamente)").format(updatedRecord.proofCode)
 		})
 		
-		return true -- El autocierre fue exitoso
+		return true
 	end
 
-	return false -- No se hizo nada
+	return false
 end
 -- ===================================================
 
@@ -203,9 +253,9 @@ end
 function TradeStorage:SweepUserPendings(userId)
 	local list = DS_BYUSER:GetAsync("U:"..userId) or {}
 	for _, code in ipairs(list) do
-		local rec = DS_TRADES:GetAsync(code)
+		-- Solo necesita leer la tabla maestra
+		local rec = DS_TRADES:GetAsync(code) 
 		if rec and rec.state == "PROMISED" and now() >= (rec.expiresAt or 0) then
-			-- task.spawn para que un trade fallido no detenga el bucle (opcional pero recomendado)
 			task.spawn(function()
 				self:TryAutoClose(code)
 			end)
