@@ -95,17 +95,20 @@ function TradeStorage:CreatePromised(aPlr, aProp, bPlr, bProp)
 		bUserId = bPlr.UserId,
 		bUsername = bPlr.Name,
 		
-		-- Campo de resumen (como lo pediste)
 		aBrainrotsChanged = buildItemsString(aProp.itemsList),
 		bBrainrotsChanged = buildItemsString(bProp.itemsList),
 
-		-- Campos de Intermediario (default)
-		isIntermediary = false,
+		-- [¡NUEVO!] Guardar el estado del intermediario
+		-- Si CUALQUIERA de los dos lo pide, el trade es con intermediario
+		isIntermediary = aProp.wantsIntermediary or bProp.wantsIntermediary,
+		aWantsIntermediary = aProp.wantsIntermediary or false,
+		bWantsIntermediary = bProp.wantsIntermediary or false,
+		
+		-- (Campos 'intermediaryId' y 'intermediaryUsername' se mantienen nil por ahora)
 		intermediaryId = nil,
 		intermediaryUsername = nil,
 		
-		-- Elemento de seguridad: Hash de los datos (opcional pero recomendado)
-		dataHash = HttpService:GenerateGUID(false) -- Un simple hash para esta versión
+		dataHash = HttpService:GenerateGUID(false)
 	}
 
 	-- 2. Construir la lista de ítems para la Tabla 2 (DS_ITEMS)
@@ -159,8 +162,15 @@ function TradeStorage:CreatePromised(aPlr, aProp, bPlr, bProp)
 
 	-- 5. Espejo HTTP (Sheets o Discord) - (se mantiene)
 	-- Enviamos el registro maestro
-	httpPost(Config.SHEETS_WEBAPP_URL, tradeRecord) 
+	local sheetsPayload = {
+		tradeRecord = tradeRecord, -- Tu "Tabla 1" (Datos del Trade)
+		itemsRecord = itemsRecord  -- Tu "Tabla 2" (Lista de Items)
+	}
 	
+	-- Enviar el payload combinado a Sheets
+	httpPost(Config.SHEETS_WEBAPP_URL, sheetsPayload) 
+	
+	-- El payload de Discord se mantiene simple (sin cambios)
 	httpPost(Config.DISCORD_WEBHOOK_URL, {
 		username = "TradeBot (v2)",
 		embeds = {{

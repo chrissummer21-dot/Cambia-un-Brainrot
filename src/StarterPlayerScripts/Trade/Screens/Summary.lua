@@ -6,11 +6,10 @@ local Summary = {}
 Summary.__index = Summary
 
 local PLACEHOLDER_IMAGE_ID = "512833360"
+local GREEN = Color3.fromRGB(70, 220, 70)
+local RED = Color3.fromRGB(220, 70, 70)
 
--- ===================================================
--- [¡NUEVO!] Función auxiliar para crear filas de resumen
--- (Similar a ProposalReview, pero sin inputs)
--- ===================================================
+-- Función auxiliar para crear filas de resumen
 local function addTextStroke(guiObject)
 	local stroke = Instance.new("UIStroke")
 	stroke.Thickness = 1.5; stroke.Color = Color3.fromRGB(0, 0, 0)
@@ -19,9 +18,6 @@ local function addTextStroke(guiObject)
 	return stroke
 end
 
--- ===================================================
--- [¡FUNCIÓN CORREGIDA!]
--- ===================================================
 local function makeSummaryRow(parent, itemData)
 	local rowFrame = Instance.new("Frame")
 	rowFrame.Name = itemData.id
@@ -42,48 +38,27 @@ local function makeSummaryRow(parent, itemData)
 	padding.PaddingRight = UDim.new(0, 8)
 	padding.Parent = rowFrame
 
-	-- 1. Foto (LÓGICA CORREGIDA)
+	-- 1. Foto
 	local image = Instance.new("ImageLabel")
 	image.Size = UDim2.fromOffset(40, 40)
-	
-	-- El 'itemData' que llega tiene: {id, name, rarity, value, unit}
 	local dbEntry = nil
 	local imageId = nil
-	
-	-- Intento 1: Buscar usando la rareza (la forma más rápida)
 	local category = itemData.rarity
 	if category and BrainrotDatabase[category] then
 		for _, item in ipairs(BrainrotDatabase[category]) do
-			if item.ID == itemData.id then
-				dbEntry = item
-				break
-			end
+			if item.ID == itemData.id then dbEntry = item; break end
 		end
 	end
-	
-	-- Intento 2: Si la rareza falló o era nula, buscar en TODA la base de datos
 	if not dbEntry then
 		for cat, items in pairs(BrainrotDatabase) do
-			if dbEntry then break end -- Salir si ya lo encontramos
+			if dbEntry then break end
 			for _, item in ipairs(items) do
-				if item.ID == itemData.id then
-					dbEntry = item
-					break
-				end
+				if item.ID == itemData.id then dbEntry = item; break end
 			end
 		end
 	end
-	
-	-- Asignar la imagen si la encontramos
-	if dbEntry then
-		imageId = dbEntry.Image
-	end
-	
-	-- Asignar la imagen (o el placeholder si 'imageId' sigue siendo nil)
+	if dbEntry then imageId = dbEntry.Image end
 	image.Image = "rbxassetid://" .. (imageId or PLACEHOLDER_IMAGE_ID)
-	
-	-- (Fin de la corrección)
-	
 	image.ScaleType = Enum.ScaleType.Fit
 	image.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 	image.LayoutOrder = 1
@@ -99,14 +74,12 @@ local function makeSummaryRow(parent, itemData)
 	nameLabel.Parent = rowFrame
 
 	-- 3. Dinero y Múltiplo
-	-- [ARREGLO DE FORMATO] Usar 'tostring' para valores enteros y '%.1f' para decimales
 	local valueString
 	if itemData.value == math.floor(itemData.value) then
 		valueString = tostring(itemData.value)
 	else
 		valueString = string.format("%.1f", itemData.value)
 	end
-	
 	local valueText = string.format("%s %s", valueString, itemData.unit)
 	local valueLabel = Components.MakeLabel(valueText, 20)
 	valueLabel.Size = UDim2.new(0.35, 0, 0.8, 0)
@@ -118,12 +91,12 @@ local function makeSummaryRow(parent, itemData)
 	return rowFrame
 end
 
+
 -- ===================================================
 -- [¡ACTUALIZADO!] Nueva estructura de 'new'
 -- ===================================================
 function Summary.new(parent)
 	local self = setmetatable({}, Summary)
-	-- Modal más grande para acomodar las listas
 	local modal = Components.MakeModal(parent, "Summary", 0.6, 0.7)
 
 	local title = Components.MakeLabel("Resumen del trade", 30)
@@ -131,11 +104,10 @@ function Summary.new(parent)
 	title.TextXAlignment = Enum.TextXAlignment.Center
 	title.Parent = modal
 
-	-- Contenedor principal para las dos listas (Tú y Otro)
 	local mainFrame = Instance.new("Frame")
 	mainFrame.Name = "ListsFrame"
 	mainFrame.BackgroundTransparency = 1
-	mainFrame.Size = UDim2.new(1, 0, 0.5, 0) -- Ocupa la mitad del alto
+	mainFrame.Size = UDim2.new(1, 0, 0.5, 0)
 	mainFrame.Parent = modal
 	
 	local mainLayout = Instance.new("UIListLayout")
@@ -161,6 +133,12 @@ function Summary.new(parent)
 	addTextStroke(aTitle)
 	aTitle.Parent = aFrame
 	
+	-- [¡NUEVO!] Etiqueta de Intermediario (Tú)
+	local aIntermediaryLabel = Components.MakeLabel("Intermediario Solicitado: No", 18)
+	aIntermediaryLabel.TextColor3 = RED
+	aIntermediaryLabel.TextXAlignment = Enum.TextXAlignment.Left
+	aIntermediaryLabel.Parent = aFrame
+	
 	local aScroll = Instance.new("ScrollingFrame")
 	aScroll.Name = "A_Scroll"
 	aScroll.Size = UDim2.new(1, 0, 0.8, 0)
@@ -172,14 +150,10 @@ function Summary.new(parent)
 	local aScrollLayout = Instance.new("UIListLayout")
 	aScrollLayout.Padding = UDim.new(0, 6)
 	aScrollLayout.Parent = aScroll
-	
-	-- [CORRECCIÓN 1]
 	Instance.new("UICorner", aScroll).CornerRadius = UDim.new(0, 8)
 	local aPadding = Instance.new("UIPadding", aScroll)
-	aPadding.PaddingTop = UDim.new(0, 6)
-	aPadding.PaddingBottom = UDim.new(0, 6)
-	aPadding.PaddingLeft = UDim.new(0, 6)
-	aPadding.PaddingRight = UDim.new(0, 6)
+	aPadding.PaddingTop = UDim.new(0, 6); aPadding.PaddingBottom = UDim.new(0, 6)
+	aPadding.PaddingLeft = UDim.new(0, 6); aPadding.PaddingRight = UDim.new(0, 6)
 
 	-- Columna "OTRO"
 	local bFrame = Instance.new("Frame")
@@ -197,6 +171,12 @@ function Summary.new(parent)
 	addTextStroke(bTitle)
 	bTitle.Parent = bFrame
 	
+	-- [¡NUEVO!] Etiqueta de Intermediario (Otro)
+	local bIntermediaryLabel = Components.MakeLabel("Intermediario Solicitado: No", 18)
+	bIntermediaryLabel.TextColor3 = RED
+	bIntermediaryLabel.TextXAlignment = Enum.TextXAlignment.Left
+	bIntermediaryLabel.Parent = bFrame
+	
 	local bScroll = Instance.new("ScrollingFrame")
 	bScroll.Name = "B_Scroll"
 	bScroll.Size = UDim2.new(1, 0, 0.8, 0)
@@ -208,16 +188,12 @@ function Summary.new(parent)
 	local bScrollLayout = Instance.new("UIListLayout")
 	bScrollLayout.Padding = UDim.new(0, 6)
 	bScrollLayout.Parent = bScroll
-
-	-- [CORRECCIÓN 2]
 	Instance.new("UICorner", bScroll).CornerRadius = UDim.new(0, 8)
 	local bPadding = Instance.new("UIPadding", bScroll)
-	bPadding.PaddingTop = UDim.new(0, 6)
-	bPadding.PaddingBottom = UDim.new(0, 6)
-	bPadding.PaddingLeft = UDim.new(0, 6)
-	bPadding.PaddingRight = UDim.new(0, 6)
+	bPadding.PaddingTop = UDim.new(0, 6); bPadding.PaddingBottom = UDim.new(0, 6)
+	bPadding.PaddingLeft = UDim.new(0, 6); bPadding.PaddingRight = UDim.new(0, 6)
 
-	-- Estado/nota (esperas y aceptación del otro)
+	-- (Resto de los elementos)
 	local note = Components.MakeLabel("")
 	note.TextXAlignment = Enum.TextXAlignment.Center
 	note.Parent = modal
@@ -238,22 +214,24 @@ function Summary.new(parent)
 	self.backBtn   = back
 	self.otherId   = nil
 	
-	-- Guardar referencia a los contenedores de las listas
 	self.aListContainer = aScroll
 	self.bListContainer = bScroll
+	-- [¡NUEVO!] Guardar referencias a las etiquetas
+	self.aIntermediaryLabel = aIntermediaryLabel
+	self.bIntermediaryLabel = bIntermediaryLabel
 
 	return self
 end
 
 -- ===================================================
--- [¡ACTUALIZADO!] 'Open' ahora espera listas (tables)
+-- [¡ACTUALIZADO!] 'Open' ahora acepta los booleanos
 -- ===================================================
-function Summary:Open(otherId, aItemsList, bItemsList, warning, youAccepted, partnerAccepted, partnerName)
+function Summary:Open(otherId, aItemsList, bItemsList, warning, youAccepted, partnerAccepted, partnerName, aWantsIntermediary, bWantsIntermediary)
 	self.otherId = otherId
 	self.title.Text = "Resumen del trade"
 	self.warn.Text  = warning or "Confirma solo si estás de acuerdo."
 
-	-- Limpiar listas anteriores
+	-- Limpiar listas
 	for _, child in ipairs(self.aListContainer:GetChildren()) do
 		if child:IsA("Frame") then child:Destroy() end
 	end
@@ -274,8 +252,15 @@ function Summary:Open(otherId, aItemsList, bItemsList, warning, youAccepted, par
 			makeSummaryRow(self.bListContainer, itemData)
 		end
 	end
+	
+	-- [¡NUEVO!] Actualizar las etiquetas de intermediario
+	self.aIntermediaryLabel.Text = aWantsIntermediary and "Intermediario Solicitado: Si" or "Intermediario Solicitado: No"
+	self.aIntermediaryLabel.TextColor3 = aWantsIntermediary and GREEN or RED
+	
+	self.bIntermediaryLabel.Text = bWantsIntermediary and "Intermediario Solicitado: Si" or "Intermediario Solicitado: No"
+	self.bIntermediaryLabel.TextColor3 = bWantsIntermediary and GREEN or RED
 
-	-- pinta estado
+	-- Pinta el estado de los botones
 	self:PaintStatus(youAccepted, partnerAccepted, partnerName)
 
 	self.modal.Visible = true
@@ -320,6 +305,10 @@ function Summary:Close()
 	for _, child in ipairs(self.bListContainer:GetChildren()) do
 		if child:IsA("Frame") then child:Destroy() end
 	end
+	
+	-- Resetear etiquetas
+	self.aIntermediaryLabel.Text = ""
+	self.bIntermediaryLabel.Text = ""
 end
 
 return Summary

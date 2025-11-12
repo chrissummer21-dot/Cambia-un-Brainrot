@@ -222,7 +222,7 @@ SYNC.OnClientEvent:Connect(function(payload)
 		Selector:Open(currentOtherId, payload.partnerB or payload.partnerA or "Jugador")
 
    -- [¡CORREGIDO!] Lee las listas de ítems
-   elseif state == "SUMMARY" then
+  elseif state == "SUMMARY" then
 		currentTradeState = "SUMMARY" 
 		Loading:Hide() 
 		Selector:Close() 
@@ -230,12 +230,15 @@ SYNC.OnClientEvent:Connect(function(payload)
 		Waiting:Hide() 
 		Summary:Open(
 			currentOtherId,
-			payload.aItems, -- ¡La lista de ítems de A!
-			payload.bItems, -- ¡La lista de ítems de B!
+			payload.aItems, -- Tu lista
+			payload.bItems, -- Su lista
 			payload.warning,
 			payload.youAccepted,
 			payload.partnerAccepted,
-			payload.partnerName
+			payload.partnerName,
+			-- [¡NUEVO!]
+			payload.aWantsIntermediary,
+			payload.bWantsIntermediary
 		)
 	
 	elseif state == "LOADING" then

@@ -127,23 +127,25 @@ end)
 -- 2) PROPOSAL: validación + entregar a SM
 --    Nota: 'mps' representa "unidades enteras" en tu diseño actual.
 SUBMIT.OnServerEvent:Connect(function(plr, data)
-		if type(data) ~= "table" then return end
-		local otherId = tonumber(data.otherId or 0) or 0
-		local other = Players:GetPlayerByUserId(otherId)
-		if not other then return end
+	if type(data) ~= "table" then return end
+	local otherId = tonumber(data.otherId or 0) or 0
+	local other = Players:GetPlayerByUserId(otherId)
+	if not other then return end
 
-		local itemsList = data.itemsList
-		local totalValue = tonumber(data.totalValue or 0) or 0
+	local itemsList = data.itemsList
+	local totalValue = tonumber(data.totalValue or 0) or 0
+	-- [¡NUEVO!] Leer la solicitud de intermediario
+	local wantsIntermediary = data.wantsIntermediary == true
 
-		local ok, msg = TradeShared.validateProposal(itemsList, totalValue)
-		if not ok then
-			notify(plr, "error", msg)
-			return
-		end
+	local ok, msg = TradeShared.validateProposal(itemsList, totalValue)
+	if not ok then
+		notify(plr, "error", msg)
+		return
+	end
 
-		-- Ya no sanitizamos texto, pasamos la tabla limpia
-		SM:OnProposal(plr, other, itemsList, totalValue)
-	end)
+	-- [¡NUEVO!] Pasar el dato al SessionManager
+	SM:OnProposal(plr, other, itemsList, totalValue, wantsIntermediary)
+end)
 
 -- 3) SUMMARY: confirmar / cancelar
 CONFIRM.OnServerEvent:Connect(function(plr, data)

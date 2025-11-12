@@ -58,8 +58,9 @@ end
 -- ===================================================
 -- [¡FUNCIÓN CORREGIDA!]
 -- ===================================================
+-- CÓDIGO ACTUALIZADO --
 function SessionManager:_syncSummary(s)
-	local propA = s.proposals[s.a] -- Esto es { itemsList = {...}, totalValue = ... }
+	local propA = s.proposals[s.a] -- { itemsList, totalValue, wantsIntermediary }
 	local propB = s.proposals[s.b]
 	
 	local warning = "Al confirmar, ambos se comprometen a cumplir."
@@ -70,20 +71,27 @@ function SessionManager:_syncSummary(s)
 	-- payload para A
 	SYNC:FireClient(s.a, {
 		state = "SUMMARY",
-		aItems = propA.itemsList, -- ¡La lista de A!
-		bItems = propB.itemsList, -- ¡La lista de B!
+		aItems = propA.itemsList,
+		bItems = propB.itemsList,
+		-- [¡NUEVO!]
+		aWantsIntermediary = propA.wantsIntermediary,
+		bWantsIntermediary = propB.wantsIntermediary,
+		
 		warning = warning,
 		youAccepted = youA,
 		partnerAccepted = youB,
-		-- [¡CORRECCIÓN!] Era 's.o', ahora es 's.b'
 		partnerName = string.format("%s (@%s)", s.b.DisplayName, s.b.Name), 
 	})
 
 	-- payload para B
 	SYNC:FireClient(s.b, {
 		state = "SUMMARY",
-		aItems = propB.itemsList, -- ¡Invertido para B!
-		bItems = propA.itemsList, -- ¡Invertido para B!
+		aItems = propB.itemsList, -- Invertido
+		bItems = propA.itemsList, -- Invertido
+		-- [¡NUEVO!]
+		aWantsIntermediary = propB.wantsIntermediary, -- Invertido
+		bWantsIntermediary = propA.wantsIntermediary, -- Invertido
+
 		warning = warning,
 		youAccepted = youB,
 		partnerAccepted = youA,
@@ -133,10 +141,7 @@ function SessionManager:OnInviteResponse(plr, other, accept)
 	local k = keyFor(plr.UserId, other.UserId)
 	local s = self.sessions[k]
 	if not s or s.state ~= "INVITE" then return end
-	if not self:BothInZone(plr, other) then
-		self:CancelSession(s, "Alguien salió de la zona.")
-		return
-	end
+	
 
 	if not accept then
 		self:CancelSession(s, pretty(plr).." rechazó el trade.")
@@ -155,17 +160,19 @@ end
 -- ===================================================
 -- [¡ACTUALIZADO!]
 -- ===================================================
-function SessionManager:OnProposal(plr, other, itemsList, totalValue)
+-- CÓDIGO ACTUALIZADO --
+function SessionManager:OnProposal(plr, other, itemsList, totalValue, wantsIntermediary)
 	local k = keyFor(plr.UserId, other.UserId)
 	local s = self.sessions[k]
 	if not s or s.state ~= "PROPOSAL" then return end
-	if not self:BothInZone(plr, other) then
-		self:CancelSession(s, "Alguien salió de la zona.")
-		return
-	end
+	
 
-	-- Almacenamos la lista y el valor
-	s.proposals[plr] = { itemsList = itemsList, totalValue = totalValue }
+	-- [¡NUEVO!] Almacenamos la solicitud de intermediario
+	s.proposals[plr] = {
+		itemsList = itemsList,
+		totalValue = totalValue,
+		wantsIntermediary = wantsIntermediary
+	}
 	
 	if s.proposals[s.a] and s.proposals[s.b] then
 		s.state = "SUMMARY"
@@ -180,10 +187,7 @@ function SessionManager:OnSummaryConfirm(plr, other, accept)
     local k = keyFor(plr.UserId, other.UserId)
     local s = self.sessions[k]
     if not s or s.state ~= "SUMMARY" then return end
-    if not self:BothInZone(plr, other) then
-        self:CancelSession(s, "Alguien salió de la zona.")
-        return
-    end
+    
     if not accept then
         self:CancelSession(s, "Cancelado por un jugador.")
         return
@@ -243,13 +247,7 @@ end
 
 function SessionManager:OnTouchEnded(plr)
 	self.inZone[plr] = nil
-	for k, s in pairs(self.sessions) do
-		if s.a == plr or s.b == plr then
-			if s.state ~= "PROMISED" then
-				self:CancelSession(s, "Alguien salió de la zona.")
-			end
-		end
-	end
+	
 end
 
 function SessionManager:OnLeaving(plr)
