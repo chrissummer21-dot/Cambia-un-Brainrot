@@ -28,10 +28,14 @@ function TradeShared.validateProposal(itemsText, units)
 	end
 
 	-- Debe ser entero >= MIN_UNITS
-	if type(units) ~= "number" then return false, "Ingresa un número entero." end
-	if units ~= math.floor(units) then return false, "Usa solo enteros (sin decimales)." end
-	if units < TradeShared.MIN_UNITS then
-		return false, ("Mínimo %d unidad(es)."):format(TradeShared.MIN_UNITS)
+	if type(units) ~= "number" then return false, "Ingresa un número válido." end
+	
+	-- Eliminamos la validación de math.floor para permitir decimales
+
+	-- El cliente ya valida que el total sea > 0
+	-- El servidor debe confirmar esto.
+	if units <= 0 then 
+		return false, "El valor total debe ser mayor a 0."
 	end
 
 	return true

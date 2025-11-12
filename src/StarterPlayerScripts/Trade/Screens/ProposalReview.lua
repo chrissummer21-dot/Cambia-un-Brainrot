@@ -68,10 +68,59 @@ local function makeReviewRow(parent, itemData)
 	valueBox.LayoutOrder = 3
 	valueBox.Parent = rowFrame
 	
+-- NUEVO CÓDIGO (DESPUÉS) --
 	valueBox:GetPropertyChangedSignal("Text"):Connect(function()
-		local newText = valueBox.Text:gsub("[^%d]", "")
-		if valueBox.Text ~= newText then
-			valueBox.Text = newText
+		local text = valueBox.Text
+		
+		-- 1. Quitar caracteres inválidos (todo menos dígitos y puntos)
+		local filtered = text:gsub("[^%d.]", "")
+		
+		-- 2. Asegurar que solo haya UN punto decimal Y MÁXIMO UN decimal
+		local firstDot = filtered:find(".", 1, true)
+		if firstDot then
+			local pre = filtered:sub(1, firstDot)
+			local post = filtered:sub(firstDot + 1)
+			
+			-- Quitar cualquier otro punto del resto del string
+			post = post:gsub("%.", "")
+			
+			-- (REGLA NUEVA) Asegurar que solo haya UN dígito después del punto
+			if #post > 1 then
+				post = post:sub(1, 1)
+			end
+			
+			filtered = pre .. post
+		end
+
+		-- 3. (REGLA NUEVA) Asegurar MÁXIMO 5 caracteres en total
+		if #filtered > 5 then
+			filtered = filtered:sub(1, 5)
+			
+			-- Si el corte de 5 chars rompió la regla de 1 decimal 
+			-- (ej: el 5to char fue el 2do decimal "12.34"),
+			-- debemos re-cortar para respetar el decimal.
+			local dotPos = filtered:find(".", 1, true)
+			if dotPos and (#filtered - dotPos) > 1 then
+				-- Ej: "12.34" se convierte en "12.3"
+				filtered = filtered:sub(1, dotPos + 1)
+			end
+			
+			-- Si el corte dejó un punto al final (ej: "1234."), quitarlo.
+			if filtered:sub(-1) == "." then
+				filtered = filtered:sub(1, 4)
+			end
+		end
+
+		-- 4. Validar el valor numérico (TOPE 999.9)
+		-- (La regla de 5 chars puede permitir '12345' o '5000')
+		local num = tonumber(filtered)
+		if num and num > 999.9 then
+			filtered = "999.9" -- Aplicar el tope máximo
+		end
+		
+		-- 5. Actualizar el texto solo si cambió
+		if valueBox.Text ~= filtered then
+			valueBox.Text = filtered
 		end
 	end)
 
