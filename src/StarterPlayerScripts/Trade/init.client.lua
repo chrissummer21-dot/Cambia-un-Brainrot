@@ -15,6 +15,8 @@ local InstrScreen    = require(script.Screens.Instructions)
 local LoadingScreen  = require(script.Screens.Loading)
 local ItemSelector   = require(script.Screens.ItemSelector)
 local ProposalReview = require(script.Screens.ProposalReview)
+-- [¡NUEVO!] Añadir la pantalla de espera
+local WaitingScreen  = require(script.Screens.Waiting)
 
 -- ===== Remotos =====
 local R = RemotesMod.Get()
@@ -31,6 +33,8 @@ local Instr    = InstrScreen.new(gui)
 local Loading  = LoadingScreen.new(gui)
 local Selector = ItemSelector.new(gui)
 local Review   = ProposalReview.new(gui)
+-- [¡NUEVO!] Instanciar la pantalla de espera
+local Waiting  = WaitingScreen.new(gui)
 
 -- ===== Estado local =====
 local currentOtherId = nil
@@ -66,29 +70,20 @@ Selector.acceptBtn.MouseButton1Click:Connect(function()
 	
 	local otherDisplayName = Selector.title.Text:gsub("Ofrecer a <b>", ""):gsub("</b>", "")
 	
-	-- 1. Abre la nueva pantalla CON la lista
 	Review:Open(Selector.otherId, otherDisplayName, stagedItems)
-	-- 2. CIERRA la pantalla anterior DESPUÉS (para no borrar la lista)
 	Selector:Close()
 end)
 
--- ===================================================
--- [¡ARREGLO!] Botón "Regresar" corregido
--- ===================================================
+
 Review.backBtn.MouseButton1Click:Connect(function()
 	if not Review.otherId then return end
 	
-	-- 1. Guardar los datos en variables locales ANTES de cerrar
 	local otherId = Review.otherId
 	local otherDisplayName = Review.title.Text:gsub("Revisa tu oferta para <b>", ""):gsub("</b>", "")
 
-	-- 2. Ahora sí, cerrar la pantalla (esto borra Review.otherId)
 	Review:Close()
-	
-	-- 3. Abrir la pantalla anterior usando las variables guardadas
 	Selector:Open(otherId, otherDisplayName)
 end)
--- ===================================================
 
 Review.acceptBtn.MouseButton1Click:Connect(function()
 	if not Review.otherId then return end
@@ -105,31 +100,30 @@ Review.acceptBtn.MouseButton1Click:Connect(function()
 		return
 	end
 
-	-- Convertir a los datos que el servidor espera (string de ítems, número de 'mps')
 	local itemsStringList = {}
 	local totalUnits = 0 
 	
 	for _, item in ipairs(proposalData) do
 		local itemStr = string.format("%s (%d %s)", item.name, item.value, item.unit)
 		table.insert(itemsStringList, itemStr)
-		
-		-- (NOTA: Por ahora, 'totalUnits' es solo la suma de los valores,
-		-- ignorando si son K, M, o B. El servidor necesita ser actualizado
-		-- para entender esto si quieres que los valores se sumen correctamente)
 		totalUnits = totalUnits + item.value
 	end
 	
 	local finalItemsString = table.concat(itemsStringList, ", ")
 	
-	-- ¡AQUÍ ENVIAMOS AL SERVIDOR!
 	SUBMIT:FireServer({
 		otherId = Review.otherId,
-		items   = finalItemsString, -- String "Alessio (500 K/s), Godly 1 (10 M/s)"
-		mps     = totalUnits -- Número total (ej: 510)
+		items   = finalItemsString,
+		mps     = totalUnits
 	})
 
 	Review:Close()
-	-- (El servidor responderá con SYNC "SUMMARY" si el otro jugador también envió)
+	
+	-- ===================================================
+	-- [¡CAMBIO!] Mostrar la pantalla de "Esperando"
+	-- ===================================================
+	Waiting:Show()
+	-- ===================================================
 end)
 
 
@@ -161,7 +155,7 @@ REQ.OnClientEvent:Connect(function(payload)
 	end
 end)
 
--- ===== Eventos “legacy” (por compatibilidad si el server los emite) =====
+-- ===== Eventos “legacy” =====
 RESP.OnClientEvent:Connect(function(payload)
 	if type(payload) ~= "table" then return end
 	if payload.kind == "invite" then
@@ -188,6 +182,7 @@ CONFIRM.OnClientEvent:Connect(function(payload)
 	if payload.kind == "openSummary" then
 		Selector:Close() 
 		Review:Close() 
+		Waiting:Hide() -- [¡CAMBIO!] Ocultar al recibir resumen
 		Summary:Open(
 			currentOtherId,
 			payload.a.mps, payload.a.items,
@@ -235,6 +230,7 @@ SYNC.OnClientEvent:Connect(function(payload)
 		Loading:Hide() 
 		Selector:Close() 
 		Review:Close()
+		Waiting:Hide() -- [¡CAMBIO!] Ocultar al recibir resumen
 		Summary:Open(
 			currentOtherId,
 			payload.a.mps, payload.a.items,
@@ -252,6 +248,7 @@ SYNC.OnClientEvent:Connect(function(payload)
 			Selector:Close()
 			Review:Close() 
 			Summary:Close()
+			Waiting:Hide() -- [¡CAMBIO!] Ocultar si se pasa a Carga
 			Loading:Show("Confirmando trade...\nEsperando al servidor.")
 		end
 
@@ -268,7 +265,8 @@ SYNC.OnClientEvent:Connect(function(payload)
 	elseif state == "CANCELED" then
 		currentTradeState = "NONE" 
 		
-		Invite:Hide(); Selector:Close(); Review:Close(); Summary:Close(); Loading:Hide()
+		-- [¡CAMBIO!] Ocultar TODAS las pantallas
+		Invite:Hide(); Selector:Close(); Review:Close(); Summary:Close(); Loading:Hide(); Waiting:Hide()
 		
 		if payload.reason then
 			Toast:Show(payload.reason, 1.6)

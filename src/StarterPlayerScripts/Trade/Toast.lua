@@ -13,6 +13,13 @@ function Toast.new(parent)
 	frame.BackgroundColor3 = Color3.fromRGB(18,18,18)
 	frame.BackgroundTransparency = 0.05
 	frame.Visible = false
+	
+	-- ===================================================
+	-- [¡ARREGLO!] Añade esta línea
+	-- ===================================================
+	frame.ZIndex = 10
+	-- ===================================================
+	
 	frame.Parent = parent
 	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
 
