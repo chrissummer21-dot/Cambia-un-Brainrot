@@ -15,7 +15,7 @@ local InstrScreen    = require(script.Screens.Instructions)
 local LoadingScreen  = require(script.Screens.Loading)
 local ItemSelector   = require(script.Screens.ItemSelector)
 local ProposalReview = require(script.Screens.ProposalReview)
--- [¡NUEVO!] Añadir la pantalla de espera
+local IntermediaryScreen = require(script.Screens.Intermediary) -- [¡AÑADIDO!]
 local WaitingScreen  = require(script.Screens.Waiting)
 
 -- ===== Remotos =====
@@ -32,8 +32,8 @@ local Summary  = SummaryScreen.new(gui)
 local Instr    = InstrScreen.new(gui)
 local Loading  = LoadingScreen.new(gui)
 local Selector = ItemSelector.new(gui)
-local Review   = ProposalReview.new(gui, Toast) -- [CORREGIDO] Pasar Toast
--- [¡NUEVO!] Instanciar la pantalla de espera
+local Review   = ProposalReview.new(gui, Toast) -- [¡CORREGIDO!] Pasa el Toast
+local Intermediary = IntermediaryScreen.new(gui) -- [¡AÑADIDO!]
 local Waiting  = WaitingScreen.new(gui)
 
 -- ===== Estado local =====
@@ -85,15 +85,11 @@ Review.backBtn.MouseButton1Click:Connect(function()
 	Selector:Open(otherId, otherDisplayName)
 end)
 
--- ===================================================
--- [¡CORREGIDO!]
--- Envía 'itemsList' (tabla) y 'totalValue'
--- ===================================================
+-- [¡ACTUALIZADO!] Este botón ahora abre la pantalla de Intermediario
 Review.acceptBtn.MouseButton1Click:Connect(function()
 	if not Review.otherId then return end
 	
-	local proposalData = Review:GetProposalData() -- Esto ya tiene {name, rarity, value, unit}
-	
+	local proposalData = Review:GetProposalData() 
 	local totalValue = 0
 	for _, item in ipairs(proposalData) do
 		totalValue = totalValue + item.value
@@ -104,15 +100,35 @@ Review.acceptBtn.MouseButton1Click:Connect(function()
 		return
 	end
 
-	SUBMIT:FireServer({
-		otherId = Review.otherId,
-		itemsList   = proposalData, -- ¡Enviamos la tabla completa!
-		totalValue  = totalValue  -- El valor total
-	})
+	-- Abre la nueva pantalla
+	Intermediary:Open(Review.otherId, proposalData, totalValue)
 
 	Review:Close()
-	Waiting:Show()
 end)
+
+-- [¡NUEVO!] Clics para la pantalla de Intermediario
+local function SendProposal(wantsIntermediary)
+	if not Intermediary.otherId then return end
+	
+	SUBMIT:FireServer({
+		otherId = Intermediary.otherId,
+		itemsList   = Intermediary.proposalData, 
+		totalValue  = Intermediary.totalValue,
+		wantsIntermediary = wantsIntermediary -- El nuevo dato
+	})
+	
+	Intermediary:Close()
+	Waiting:Show()
+end
+
+Intermediary.siBtn.MouseButton1Click:Connect(function()
+	SendProposal(true)
+end)
+
+Intermediary.noBtn.MouseButton1Click:Connect(function()
+	SendProposal(false)
+end)
+-- (Fin del bloque nuevo)
 
 
 Summary.acceptBtn.MouseButton1Click:Connect(function()
@@ -165,18 +181,10 @@ SUBMIT.OnClientEvent:Connect(function(payload)
 	end
 end)
 
--- ===================================================
--- [¡CORREGIDO!]
--- Se eliminó el 'payload.kind == "openSummary"' obsoleto.
--- El evento SYNC 'state == "SUMMARY"' se encarga de esto.
--- ===================================================
+-- [¡CORREGIDO!] Eliminado el "openSummary" obsoleto
 CONFIRM.OnClientEvent:Connect(function(payload)
 	if type(payload) ~= "table" then return end
-
-	-- El 'payload.kind == "openSummary"' se ha eliminado.
-	-- Esta lógica ahora es manejada 100% por el evento
-	-- SYNC 'state == "SUMMARY"' para evitar duplicados.
-
+	
 	if payload.kind == "peerConfirmed" then
 		Toast:Show("El otro jugador confirmó el resumen.", 1.4)
 	elseif payload.kind == "promised" then
@@ -213,10 +221,7 @@ SYNC.OnClientEvent:Connect(function(payload)
 		Invite:Hide()
 		Selector:Open(currentOtherId, payload.partnerB or payload.partnerA or "Jugador")
 
-   -- ===================================================
-   -- [¡CORREGIDO!]
-   -- Lee 'payload.aItems' y 'payload.bItems' (listas)
-   -- ===================================================
+   -- [¡CORREGIDO!] Lee las listas de ítems
    elseif state == "SUMMARY" then
 		currentTradeState = "SUMMARY" 
 		Loading:Hide() 
@@ -240,7 +245,7 @@ SYNC.OnClientEvent:Connect(function(payload)
 			Selector:Close()
 			Review:Close() 
 			Summary:Close()
-			Waiting:Hide() -- [¡CAMBIO!] Ocultar si se pasa a Carga
+			Waiting:Hide() 
 			Loading:Show("Confirmando trade...\nEsperando al servidor.")
 		end
 
@@ -257,8 +262,8 @@ SYNC.OnClientEvent:Connect(function(payload)
 	elseif state == "CANCELED" then
 		currentTradeState = "NONE" 
 		
-		-- [¡CAMBIO!] Ocultar TODAS las pantallas
-		Invite:Hide(); Selector:Close(); Review:Close(); Summary:Close(); Loading:Hide(); Waiting:Hide()
+		-- Ocultar TODAS las pantallas (incluyendo Intermediary)
+		Invite:Hide(); Selector:Close(); Review:Close(); Summary:Close(); Loading:Hide(); Waiting:Hide(); Intermediary:Close()
 		
 		if payload.reason then
 			Toast:Show(payload.reason, 1.6)
