@@ -172,11 +172,20 @@ function TradeStorage:CreatePromised(aPlr, aProp, bPlr, bProp)
 	
 	-- El payload de Discord se mantiene simple (sin cambios)
 	httpPost(Config.DISCORD_WEBHOOK_URL, {
-		username = "TradeBot (v2)",
+		username = "Bot de Trades (v2)",
 		embeds = {{
-			title = "Nuevo trade PROMISED",
-			description = ("**%s** ↔ **%s**\nItems A: %s\nItems B: %s\nProof: `%s`\nCierra en: <t:%d:R>"):
-				format(tradeRecord.aUsername, tradeRecord.bUsername, tradeRecord.aBrainrotsChanged, tradeRecord.bBrainrotsChanged, proofCode, expiresAt),
+			title = "Nuevo Trade (PROMETIDO)",
+			description = ("**%s** ↔ **%s**\nÍtems de **%s**: %s\nÍtems de **%s**: %s\nPrueba: `%s`\nCierra en: <t:%d:R>"):
+				format(
+					tradeRecord.aUsername,
+					tradeRecord.bUsername,
+					tradeRecord.aUsername, -- Añadido para "Ítems de [Nombre]"
+					tradeRecord.aBrainrotsChanged,
+					tradeRecord.bUsername, -- Añadido para "Ítems de [Nombre]"
+					tradeRecord.bBrainrotsChanged,
+					proofCode,
+					expiresAt
+				),
 			color = 0x55cc88
 		}}
 	})
