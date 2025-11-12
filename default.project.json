@@ -5,29 +5,31 @@
     "$className": "DataModel",
 
     "ReplicatedStorage": {
-  "$className": "ReplicatedStorage",
-  "$ignoreUnknownInstances": true,
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+      "TradeShared": {
+        "$path": "src/ReplicatedStorage/TradeShared.lua"
+      },
+      "BrainrotDatabase": {
+        "$path": "src/ReplicatedStorage/BrainrotDatabase.lua"
+      }
+    },
 
-  "TradeShared": {
-    "$path": "src/ReplicatedStorage/TradeShared.lua"
-  },
-
-  "BrainrotDatabase": {
-    "$path": "src/ReplicatedStorage/BrainrotDatabase.lua"
-  }
-},
-
-   "ServerScriptService": {
-  "$className": "ServerScriptService",
-  "TradeServer": { "$path": "src/ServerScriptService/TradeServer.server.lua" },
-  "Trade": { "$path": "src/ServerScriptService/Trade" }
-},
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "TradeServer": { "$path": "src/ServerScriptService/TradeServer.server.lua" },
+      "Trade": { "$path": "src/ServerScriptService/Trade" },
+      
+      "NPCOfferServer": { "$path": "src/ServerScriptService/NPCOfferServer.server.lua" }
+    },
 
     "StarterPlayer": {
       "$className": "StarterPlayer",
       "StarterPlayerScripts": {
         "$className": "StarterPlayerScripts",
-        "Trade": { "$path": "src/StarterPlayerScripts/Trade" }
+        "Trade": { "$path": "src/StarterPlayerScripts/Trade" },
+        
+        "NPCOfferController": { "$path": "src/StarterPlayerScripts/NPCOfferController.client.lua" }
       }
     },
 

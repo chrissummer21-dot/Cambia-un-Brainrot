@@ -29,7 +29,7 @@ local Toast  = ToastClass.new(gui)
 
 local Invite   = InviteScreen.new(gui)
 local Summary  = SummaryScreen.new(gui)
-local Instr    = InstrScreen.new(gui)
+local Instr    = InstrScreen.new(gui, Toast)
 local Loading  = LoadingScreen.new(gui)
 local Selector = ItemSelector.new(gui)
 local Review   = ProposalReview.new(gui, Toast) -- [¡CORREGIDO!] Pasa el Toast
@@ -252,11 +252,14 @@ SYNC.OnClientEvent:Connect(function(payload)
 			Loading:Show("Confirmando trade...\nEsperando al servidor.")
 		end
 
+	-- NUEVO CÓDIGO (DESPUÉS) --
 	elseif state == "PROMISED" then
 		currentTradeState = "PROMISED" 
 		Loading:Hide() 
 		Summary:Close()
-		Instr:Open() 
+		
+		-- [CAMBIO] Pasa el proofCode a la pantalla
+		Instr:Open(payload.proofCode) 
 		
 		if payload.proofCode then
 			Toast:Show("Trade confirmado! Proof: "..payload.proofCode, 3)
